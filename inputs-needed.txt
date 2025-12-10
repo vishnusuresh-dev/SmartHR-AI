@@ -1,0 +1,91 @@
+# Employee Performance Metrics System - Data Collection Requirements
+
+## 1. EMPLOYEE/USER DATA (via Registration/Profile)
+- Full name
+- Email address
+- Password (for authentication)
+- Age/Date of birth
+- Phone number
+- Employee ID (auto-generated or manual)
+- Department/Team name
+- Job title/Role
+- Skills (technical & soft skills - allow multiple entries)
+- Years of experience (total)
+- Experience per skill (years for each skill)
+- Resume (PDF/DOCX upload)
+- Profile picture (optional)
+- Date of joining
+- Employment status (active/inactive)
+- Reporting manager/Team lead
+
+## 2. PROJECT DATA
+- Project name
+- Project description (detailed)
+- Required skills for project
+- Project start date
+- Project end date/deadline
+- Project status (ongoing/completed/on-hold)
+- Priority level
+- Team members assigned
+- Project category/type
+
+## 3. PERFORMANCE TRACKING DATA
+- Task completion rate (%)
+- Tasks assigned vs completed
+- Project milestones achieved
+- Deadline adherence (on-time/delayed)
+- Quality ratings (1-5 scale or similar)
+- Peer reviews/feedback
+- Manager ratings
+- Self-assessment scores
+- Number of bugs/issues reported (for developers)
+- Time spent on tasks/projects
+- Attendance records
+- Leave records
+
+## 4. TEAM/COLLABORATION DATA
+- Team name
+- Team members list
+- Team lead/manager
+- Team performance metrics
+- Inter-team collaboration frequency
+- Communication effectiveness ratings
+- Meeting participation
+
+## 5. SKILLS DEVELOPMENT DATA
+- Current skill proficiency levels (beginner/intermediate/advanced)
+- Completed training/courses
+- Certifications
+- Learning goals/aspirations
+- Areas needing improvement (from reviews)
+- Training completion dates
+- Assessment test scores
+
+## 6. AI KNOWLEDGE BASE DATA (for RAG)
+- Company policies documents
+- Team documentation
+- Project documentation
+- Best practices guides
+- Training materials
+- FAQs
+- Standard operating procedures (SOPs)
+- Past project reports
+- Meeting notes/minutes
+
+## 7. HISTORICAL/TIME-SERIES DATA
+- Performance ratings over time
+- Skill progression timeline
+- Project completion history
+- Feedback history
+- Training completion timeline
+
+---
+
+## NOTES FOR IMPLEMENTATION:
+- Start with essential data first (sections 1, 2, 3)
+- Gradually add more fields as you build features
+- Ensure proper data validation for all inputs
+- Store resume files securely with proper file handling
+- Implement incremental data collection (don't overwhelm users initially)
+- Use dropdown/multi-select for standardized fields (skills, departments)
+- Make some fields optional to encourage user adoption
