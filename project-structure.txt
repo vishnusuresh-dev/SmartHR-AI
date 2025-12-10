@@ -1,0 +1,22 @@
+employee-performance-ai/
+├── backend/
+│   ├── app.py              # Flask/FastAPI main
+│   ├── auth.py             # Authentication
+│   ├── database.py         # DB operations
+│   └── ai_engine/
+│       ├── __init__.py
+│       ├── rag_pipeline.py      # RAG implementation
+│       ├── embeddings.py        # Embedding generation
+│       ├── skill_matcher.py     # Project-skill matching
+│       ├── performance_analyzer.py
+│       ├── learning_path.py
+│       └── insights_generator.py
+├── data/
+│   ├── chroma_db/          # Vector database
+│   ├── resumes/            # Uploaded resumes
+│   └── knowledge_base/     # Team documents
+├── frontend/
+│   ├── index.html
+│   ├── dashboard.html
+│   └── js/
+└── requirements.txt
