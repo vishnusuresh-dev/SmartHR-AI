@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartHR AI Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">🧠</div>
+                <div class="logo-text">
+                    <h1>SmartHR AI</h1>
+                    <p>Powered by Llama 3.1 + RAG</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="search-container">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" class="search-input" placeholder="Search employees, skills, projects..." id="searchInput">
+                </div>
+                <a href="{{ url_for('form') }}">
+                <button class="user-btn">👥</button>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <h2>Welcome back, Manager 👋</h2>
+            <p>Here's what's happening with your team today</p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon bg-blue">👥</div>
+                    <span class="stat-change">+5</span>
+                </div>
+                <p class="stat-label">Total Employees</p>
+                <p class="stat-value">124</p>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon bg-green">📈</div>
+                    <span class="stat-change">+3%</span>
+                </div>
+                <p class="stat-label">Avg Performance</p>
+                <p class="stat-value">87%</p>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon bg-purple">📊</div>
+                    <span class="stat-change">+2</span>
+                </div>
+                <p class="stat-label">Active Projects</p>
+                <p class="stat-value">18</p>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon bg-orange">📚</div>
+                    <span class="stat-change">+12%</span>
+                </div>
+                <p class="stat-label">Training Hours</p>
+                <p class="stat-value">342</p>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <h3 class="section-title">
+                <span class="section-icon">⚡</span>
+                AI-Powered Quick Actions
+            </h3>
+            <div class="actions-grid">
+                <div class="action-card" onclick="openChat()">
+                    <div class="action-icon gradient-purple-pink">💬</div>
+                    <h4>AI Assistant</h4>
+                    <p>Ask anything about your team</p>
+                </div>
+                <div class="action-card">
+                    <div class="action-icon gradient-blue-cyan">📄</div>
+                    <h4>Parse Resume</h4>
+                    <p>Auto-extract employee data</p>
+                </div>
+                <div class="action-card">
+                    <div class="action-icon gradient-green-emerald">🏆</div>
+                    <h4>Generate Review</h4>
+                    <p>AI-powered performance reviews</p>
+                </div>
+                <div class="action-card">
+                    <div class="action-icon gradient-orange-red">📚</div>
+                    <h4>Learning Paths</h4>
+                    <p>Personalized skill development</p>
+                </div>
+                <div class="action-card">
+                    <div class="action-icon gradient-indigo-purple">🧠</div>
+                    <h4>Smart Matching</h4>
+                    <p>Find perfect candidates for projects</p>
+                </div>
+                <div class="action-card">
+                    <div class="action-icon gradient-pink-rose">📊</div>
+                    <h4>Team Insights</h4>
+                    <p>AI-generated reports & trends</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="main-grid">
+            <!-- Recent Activity -->
+            <div class="content-card">
+                <h3 class="card-title">
+                    📅 Recent Activity
+                </h3>
+                <div>
+                    <div class="activity-item">
+                        <div class="activity-icon status-success">🏆</div>
+                        <div class="activity-content">
+                            <p class="activity-user">Sarah Johnson</p>
+                            <p class="activity-action">Performance review generated</p>
+                            <p class="activity-time">5 min ago</p>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon status-info">🧠</div>
+                        <div class="activity-content">
+                            <p class="activity-user">AI System</p>
+                            <p class="activity-action">Found 3 candidates for Project Phoenix</p>
+                            <p class="activity-time">12 min ago</p>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon status-warning">⚠️</div>
+                        <div class="activity-content">
+                            <p class="activity-user">System Alert</p>
+                            <p class="activity-action">Flight risk detected: Mike Chen</p>
+                            <p class="activity-time">1 hour ago</p>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon status-success">🏆</div>
+                        <div class="activity-content">
+                            <p class="activity-user">Emily Davis</p>
+                            <p class="activity-action">Completed React Advanced course</p>
+                            <p class="activity-time">2 hours ago</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upcoming Tasks -->
+            <div class="content-card">
+                <h3 class="card-title">
+                    ⚠️ Upcoming Tasks
+                </h3>
+                <div>
+                    <div class="task-item">
+                        <div class="task-header">
+                            <p class="task-name">Q4 Performance Reviews</p>
+                            <span class="task-priority priority-high">high</span>
+                        </div>
+                        <p class="task-due">Due in 3 days</p>
+                    </div>
+                    <div class="task-item">
+                        <div class="task-header">
+                            <p class="task-name">Skills assessment: Frontend team</p>
+                            <span class="task-priority priority-medium">medium</span>
+                        </div>
+                        <p class="task-due">Due in 5 days</p>
+                    </div>
+                    <div class="task-item">
+                        <div class="task-header">
+                            <p class="task-name">Generate training plan</p>
+                            <span class="task-priority priority-low">low</span>
+                        </div>
+                        <p class="task-due">Due in 1 week</p>
+                    </div>
+                </div>
+                <button class="view-all-btn">View All Tasks</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Chat Modal -->
+    <div class="modal" id="chatModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-logo">
+                    <div class="modal-icon">💬</div>
+                    <div class="modal-title">
+                        <h3>AI HR Assistant</h3>
+                        <p>Powered by Llama 3.1 + RAG</p>
+                    </div>
+                </div>
+                <button class="close-btn" onclick="closeChat()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="chat-welcome">
+                    <p>👋 Hi! I'm your AI HR assistant. Ask me anything like:</p>
+                    <ul>
+                        <li>• "Who on my team knows React and is available?"</li>
+                        <li>• "Show me employees who need leadership training"</li>
+                        <li>• "Find best candidates for Project Phoenix"</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="chat-input-container">
+                    <input type="text" class="chat-input" placeholder="Ask anything about your team...">
+                    <button class="send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
