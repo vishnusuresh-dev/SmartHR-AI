@@ -27,7 +27,7 @@ ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 #     "postgresql://neondb_owner:npg_q9SDb6EgJdIXQep-quiet-lake-a9yvva3t-pooler.gwc.azure.neon.tech/employee?sslmode=require&channel_binding=require"
 # )
 
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://neondb_owner:npg_q9SDb6EgJdIXQep-quiet-lake-a9yvva3t-pooler.gwc.azure.neon.tech/employee?sslmode=require&channel_binding=require"
+app.config['SQLALCHEMY_DATABASE_URI'] = app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://myuser:mypassword@npg_q9SDb6EgJdIXQep-quiet-lake-a9yvva3t-pooler.gwc.azure.neon.tech:5432/employee?sslmode=require&channel_binding=require"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
