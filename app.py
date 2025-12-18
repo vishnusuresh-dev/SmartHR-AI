@@ -24,8 +24,7 @@ ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://neondb_owner:npg_q9SDb6EgJdIXQep-quiet-lake-a9yvva3t-pooler.gwc.azure.neon.tech/employee?sslmode=require&channel_binding=require
-
+    "postgresql://neondb_owner:npg_q9SDb6EgJdIXQep-quiet-lake-a9yvva3t-pooler.gwc.azure.neon.tech/employee?sslmode=require&channel_binding=require"
 )
 
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
