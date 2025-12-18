@@ -29,7 +29,7 @@ ALLOWED_RESUME_EXT = {"pdf", "doc", "docx"}
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "DATABASE_URL"
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql+psycopg2://neondb_owner:npg_4fJul3wbMYIU@ep-noisy-glade-a9kvlc1v-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
