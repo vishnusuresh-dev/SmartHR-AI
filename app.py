@@ -1,5 +1,4 @@
 # app.py
-import os
 import uuid
 import json
 from datetime import datetime
@@ -9,10 +8,12 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
-print("DATABASE_URL =", os.getenv("DATABASE_URL"))
+DATABASE_URL = os.getenv("DATABASE_URL")
+print("DATABASE_URL =", DATABASE_URL)
 
 # --- Config ---
 app = Flask(__name__)
@@ -28,9 +29,7 @@ ALLOWED_RESUME_EXT = {"pdf", "doc", "docx"}
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 
 
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "postgresql://neondb_owner:npg_QuJkEv0F1yNR@quiet-lake-a9yvva3t-pooler.gwc.azure.neon.tech/employee?sslmode=require"
-)
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
