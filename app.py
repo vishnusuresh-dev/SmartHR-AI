@@ -29,7 +29,7 @@ ALLOWED_RESUME_EXT = {"pdf", "doc", "docx"}
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 
 
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+app.config["SQLALCHEMY_DATABASE_URI"] = "DATABASE_URL"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
