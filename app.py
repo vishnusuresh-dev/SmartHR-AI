@@ -8,6 +8,9 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Config ---
 app = Flask(__name__)
@@ -224,3 +227,5 @@ with app.app_context():
 if __name__ == "__main__":
     # For development only. Use a proper WSGI server in production (gunicorn/uvicorn, etc.)
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
+print("DB URL =", os.getenv("DATABASE_URL"))
