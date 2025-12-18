@@ -87,7 +87,7 @@ def allowed_file(filename, allowed_set):
 
 @app.route("/")
 def home():
-    return render_template("app.html")
+    return render_template("login.html")
 
 @app.route("/form")
 def form():
