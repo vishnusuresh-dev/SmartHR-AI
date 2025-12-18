@@ -22,59 +22,54 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 ALLOWED_RESUME_EXT = {"pdf", "doc", "docx"}
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 
-# Database - use DATABASE_URL env var, fallback to a typical local postgres URL placeholder
-# Example: postgresql://username:password@localhost:5432/yourdb
-# DATABASE_URL = os.environ.get(
-#     "DATABASE_URL",
-#     "postgresql://postgres:Bhagya@localhost:5432/employee_db"
-# )
-# app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-# app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# db = SQLAlchemy(app)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
 
 
-# # --- Models ---
-# class Employee(db.Model):
-#     __tablename__ = "employees"
+# --- Models ---
+class Employee(db.Model):
+    __tablename__ = "employees"
 
-#     id = db.Column(db.Integer, primary_key=True)
-#     employee_id = db.Column(db.String(64), unique=True, nullable=False)  # e.g. EMPXXXX
-#     full_name = db.Column(db.String(200), nullable=False)
-#     email = db.Column(db.String(200), nullable=False)
-#     password = db.Column(db.String(200), nullable=True)
-#     dob = db.Column(db.Date, nullable=True)
-#     phone = db.Column(db.String(50), nullable=True)
-#     department = db.Column(db.String(200), nullable=True)
-#     job_title = db.Column(db.String(200), nullable=True)
-#     total_exp = db.Column(db.Float, nullable=True)
-#     skills = db.Column(JSON, nullable=True)  # stores dict {skill_name: years}
-#     resume_path = db.Column(db.String(500), nullable=True)
-#     profile_pic = db.Column(db.String(500), nullable=True)
-#     joining_date = db.Column(db.Date, nullable=True)
-#     status = db.Column(db.String(50), nullable=True)
-#     manager = db.Column(db.String(200), nullable=True)
-#     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.String(64), unique=True, nullable=False)  # e.g. EMPXXXX
+    full_name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(200), nullable=False)
+    password = db.Column(db.String(200), nullable=True)
+    dob = db.Column(db.Date, nullable=True)
+    phone = db.Column(db.String(50), nullable=True)
+    department = db.Column(db.String(200), nullable=True)
+    job_title = db.Column(db.String(200), nullable=True)
+    total_exp = db.Column(db.Float, nullable=True)
+    skills = db.Column(JSON, nullable=True)  # stores dict {skill_name: years}
+    resume_path = db.Column(db.String(500), nullable=True)
+    profile_pic = db.Column(db.String(500), nullable=True)
+    joining_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(50), nullable=True)
+    manager = db.Column(db.String(200), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-#     def to_dict(self):
-#         return {
-#             "id": self.id,
-#             "employee_id": self.employee_id,
-#             "full_name": self.full_name,
-#             "email": self.email,
-#             "dob": self.dob.isoformat() if self.dob else None,
-#             "phone": self.phone,
-#             "department": self.department,
-#             "job_title": self.job_title,
-#             "total_exp": self.total_exp,
-#             "skills": self.skills or {},
-#             "resume_path": self.resume_path,
-#             "profile_pic": self.profile_pic,
-#             "joining_date": self.joining_date.isoformat() if self.joining_date else None,
-#             "status": self.status,
-#             "manager": self.manager,
-#             "created_at": self.created_at.isoformat() if self.created_at else None
-#         }
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "employee_id": self.employee_id,
+            "full_name": self.full_name,
+            "email": self.email,
+            "dob": self.dob.isoformat() if self.dob else None,
+            "phone": self.phone,
+            "department": self.department,
+            "job_title": self.job_title,
+            "total_exp": self.total_exp,
+            "skills": self.skills or {},
+            "resume_path": self.resume_path,
+            "profile_pic": self.profile_pic,
+            "joining_date": self.joining_date.isoformat() if self.joining_date else None,
+            "status": self.status,
+            "manager": self.manager,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
 
 
 # --- Helpers ---
@@ -222,8 +217,8 @@ def view_all_json():
 
 
 # --- Start up: create tables if they don't exist ---
-# with app.app_context():
-#     db.create_all()
+with app.app_context():
+    db.create_all()
 
 
 if __name__ == "__main__":
