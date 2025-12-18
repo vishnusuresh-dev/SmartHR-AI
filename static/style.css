@@ -107,7 +107,7 @@
         .logout {
             padding: 0.5rem 1rem;
             border-radius: 0.75rem;
-            background: #4466ef;
+            background: linear-gradient(to right, #4f46e5, #9333ea);
             color: white;
             border: none;
             cursor: pointer;
