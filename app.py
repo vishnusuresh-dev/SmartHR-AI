@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+print("DATABASE_URL =", os.getenv("DATABASE_URL"))
+
 # --- Config ---
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret-key")
@@ -227,5 +229,3 @@ with app.app_context():
 if __name__ == "__main__":
     # For development only. Use a proper WSGI server in production (gunicorn/uvicorn, etc.)
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
-print("DB URL =", os.getenv("DATABASE_URL"))
