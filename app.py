@@ -26,23 +26,15 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 # allowed file extensions (simple)
 ALLOWED_RESUME_EXT = {"pdf", "doc", "docx"}
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
-
-<<<<<<< HEAD
 # Database - use DATABASE_URL env var, fallback to a typical local postgres URL placeholder
 # Example: postgresql://username:password@localhost:5432/yourdb
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:Bhagya@localhost:5432/employee_db"
-)
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-=======
+
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql+psycopg2://neondb_owner:npg_4fJul3wbMYIU@ep-noisy-glade-a9kvlc1v-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
->>>>>>> main
+
 db = SQLAlchemy(app)
 
 
@@ -51,7 +43,7 @@ class Employee(db.Model):
     __tablename__ = "employees"
 
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.String(64), unique=True, nullable=False)  # e.g. EMPXXXX
+    employee_id = db.Column(db.String(64), unique=True, nullable=False)
     full_name = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(200), nullable=False)
     password = db.Column(db.String(200), nullable=True)
@@ -60,7 +52,7 @@ class Employee(db.Model):
     department = db.Column(db.String(200), nullable=True)
     job_title = db.Column(db.String(200), nullable=True)
     total_exp = db.Column(db.Float, nullable=True)
-    skills = db.Column(JSON, nullable=True)  # stores dict {skill_name: years}
+    skills = db.Column(JSON, nullable=True) 
     resume_path = db.Column(db.String(500), nullable=True)
     profile_pic = db.Column(db.String(500), nullable=True)
     joining_date = db.Column(db.Date, nullable=True)
