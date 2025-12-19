@@ -1,5 +1,4 @@
 # app.py
-import os
 import uuid
 import json
 from datetime import datetime
@@ -8,6 +7,12 @@ from flask import Flask, render_template, request, redirect, session, url_for, f
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # --- Config ---
 app = Flask(__name__)
@@ -22,6 +27,7 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 ALLOWED_RESUME_EXT = {"pdf", "doc", "docx"}
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "bmp"}
 
+<<<<<<< HEAD
 # Database - use DATABASE_URL env var, fallback to a typical local postgres URL placeholder
 # Example: postgresql://username:password@localhost:5432/yourdb
 DATABASE_URL = os.environ.get(
@@ -31,6 +37,12 @@ DATABASE_URL = os.environ.get(
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+=======
+
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql+psycopg2://neondb_owner:npg_4fJul3wbMYIU@ep-noisy-glade-a9kvlc1v-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+>>>>>>> main
 db = SQLAlchemy(app)
 
 
