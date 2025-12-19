@@ -19,6 +19,17 @@
             background: #0d6efd !important;
             color: white; 
         }
+        .back{
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            background: linear-gradient(to right, #4f46e5, #9333ea);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+            display: block;
+            margin-left: 1200px;
+        }
     </style>
 
 </head>
@@ -77,5 +88,8 @@
         </table>
     </div>
 </div>
+<a href="{{ url_for('dashboard') }}">
+<button class="back">Back to Dashboard</button>
+</a>
 </body>
 </html>

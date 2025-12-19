@@ -110,8 +110,11 @@ def login():
 def dashboard():
     if "user" not in session:
         return redirect("/login")
-
-    return render_template("app.html")
+    total_employees = Employee.query.count()
+    return render_template(
+        "app.html",
+        total_employees=total_employees
+    )
 
 @app.route("/logout")
 def logout():
