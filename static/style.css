@@ -100,6 +100,16 @@
             transition: box-shadow 0.2s;
         }
 
+        .new{
+            padding: 0.575rem;
+            border-radius: 0.75rem;
+            background: linear-gradient(to right, #4f46e5, #9333ea);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+        }
+
         .user-btn:hover {
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
@@ -129,7 +139,7 @@
         /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -208,7 +218,7 @@
         }
 
         .action-card {
-            background: white;
+            background: rgb(242, 244, 247);
             border-radius: 1rem;
             padding: 1.5rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
