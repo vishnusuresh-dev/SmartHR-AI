@@ -4,7 +4,7 @@ import uuid
 import json
 from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, session, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON
 from werkzeug.utils import secure_filename
@@ -81,13 +81,38 @@ class Employee(db.Model):
 def allowed_file(filename, allowed_set):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_set
 
+USERS = {
+    "admin": "admin123"
+}
 
 # --- Routes ---
 
+@app.route("/", methods=["GET", "POST"])
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
 
-@app.route("/")
-def home():
-    return render_template("login.html")
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username not in USERS or USERS[username] != password:
+            error = "Invalid username or password"
+        else:
+            session["user"] = username
+            return redirect(url_for("dashboard"))
+    return render_template("login.html", error=error)    
+
+@app.route("/dashboard")
+def dashboard():
+    if "user" not in session:
+        return redirect("/login")
+
+    return render_template("app.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 @app.route("/form")
 def form():
