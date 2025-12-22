@@ -131,7 +131,7 @@ def dashboard():
     return render_template(
         "app.html",
         total_employees=Employee.query.count(),
-        total_projects=Project.query.count()
+        total_projects=Project.query.count()  # This already exists in your code!
     )
 
 # ======================================================

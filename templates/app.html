@@ -64,10 +64,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div class="stat-icon bg-purple">📊</div>
-                    <a href="" class="edit-icon" title="Edit Active Projects">+</a>
+                    <a href="{{ url_for('projects') }}" class="edit-icon" title="Manage Projects">+</a>
                 </div>
                 <p class="stat-label">Active Projects</p>
-                <p class="stat-value">18</p>
+                <p class="stat-value">{{ total_projects }}</p>
             </div>
         </div>
 
