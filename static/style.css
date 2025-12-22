@@ -3,7 +3,12 @@
             padding: 0;
             box-sizing: border-box;
         }
-
+        .edit-icon{
+            font-size: 1.5rem;
+            color: #0e58ec;
+            text-decoration: none;
+            cursor: pointer;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(to bottom right, #f8fafc, #dbeafe, #e0e7ff);
