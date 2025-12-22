@@ -216,6 +216,7 @@ def employees():
     all_emps = Employee.query.order_by(Employee.created_at.desc()).all()
     employees = [emp.to_dict() for emp in all_emps]
     # skills are already JSON/dict from the model
+    
     return render_template("employees.html", employees=employees)
 
 
