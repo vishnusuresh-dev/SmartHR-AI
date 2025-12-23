@@ -105,15 +105,6 @@
             transition: box-shadow 0.2s;
         }
 
-        .new{
-            padding: 0.575rem;
-            border-radius: 0.75rem;
-            background: linear-gradient(to right, #4f46e5, #9333ea);
-            color: white;
-            border: none;
-            cursor: pointer;
-            transition: box-shadow 0.2s;
-        }
 
         .user-btn:hover {
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
