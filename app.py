@@ -314,6 +314,126 @@ def employees():
         employees=Employee.query.all()
     )
 
+# ======================================================
+# EMPLOYEE DELETE ROUTE (Add this to your app.py)
+# ======================================================
+
+@app.route("/delete_employee/<int:emp_id>", methods=["POST"])
+def delete_employee(emp_id):
+    """Delete an employee and cleanup related data"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    try:
+        # Find the employee
+        employee = Employee.query.get_or_404(emp_id)
+        employee_id = employee.employee_id
+        employee_name = employee.full_name
+        
+        # Delete all project memberships for this employee
+        ProjectMember.query.filter_by(employee_id=employee_id).delete()
+        
+        # Delete the employee
+        db.session.delete(employee)
+        db.session.commit()
+        
+        flash(f"Employee {employee_name} deleted successfully", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting employee: {str(e)}", "danger")
+    
+    return redirect("/employees")
+
+
+# ======================================================
+# EMPLOYEE EDIT ROUTE (Optional - for future enhancement)
+# ======================================================
+
+@app.route("/edit_employee/<int:emp_id>", methods=["GET", "POST"])
+def edit_employee(emp_id):
+    """Edit employee details"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    employee = Employee.query.get_or_404(emp_id)
+    
+    if request.method == "POST":
+        try:
+            # Update employee fields
+            employee.full_name = request.form.get("full_name", employee.full_name)
+            employee.email = request.form.get("email", employee.email)
+            employee.department = request.form.get("department", employee.department)
+            employee.job_title = request.form.get("job_title", employee.job_title)
+            employee.phone = request.form.get("phone", employee.phone)
+            employee.manager = request.form.get("manager", employee.manager)
+            employee.status = request.form.get("status", employee.status)
+            
+            # Update total experience
+            total_exp = request.form.get("total_exp")
+            if total_exp:
+                employee.total_exp = float(total_exp)
+            
+            # Update skills if provided (expects JSON format)
+            skills_input = request.form.get("skills")
+            if skills_input:
+                import json
+                try:
+                    employee.skills = json.loads(skills_input)
+                except json.JSONDecodeError:
+                    flash("Invalid skills format. Use JSON format.", "warning")
+            
+            db.session.commit()
+            flash(f"Employee {employee.full_name} updated successfully", "success")
+            return redirect("/employees")
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error updating employee: {str(e)}", "danger")
+    
+    # GET request - render edit form
+    return render_template("edit_employee.html", employee=employee)
+
+
+# ======================================================
+# VIEW SINGLE EMPLOYEE DETAILS (Optional enhancement)
+# ======================================================
+
+@app.route("/employee/<string:employee_id>")
+def view_employee(employee_id):
+    """View detailed information about a single employee"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    employee = Employee.query.filter_by(employee_id=employee_id).first_or_404()
+    
+    # Get projects this employee is working on
+    project_memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+    projects = []
+    
+    for pm in project_memberships:
+        project = Project.query.get(pm.project_id)
+        if project:
+            # Get team members for this project
+            team_members = ProjectMember.query.filter_by(project_id=project.id).all()
+            team_size = len(team_members)
+            
+            projects.append({
+                "project": project,
+                "role": pm.role,
+                "team_size": team_size
+            })
+    
+    # Calculate detailed metrics
+    metrics = calculate_performance_metrics(employee)
+    
+    return render_template(
+        "employee_detail.html",
+        employee=employee,
+        projects=projects,
+        metrics=metrics,
+        performance_trend=get_performance_trend(employee.performance_score)
+    )
 
 # ======================================================
 # EMPLOYEE PERFORMANCE ROUTES
@@ -501,6 +621,7 @@ def delete_project(project_id):
     db.session.commit()
     flash("Project deleted successfully", "success")
     return redirect("/projects")
+
 
 
 # ======================================================
