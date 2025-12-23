@@ -288,30 +288,145 @@ def form():
 
 @app.route("/submit", methods=["POST"])
 def submit():
-    employee_id = request.form.get("employee_id") or f"EMP{uuid.uuid4().hex[:6].upper()}"
+    try:
+        # Generate or use provided employee ID
+        employee_id = request.form.get("employee_id") or f"EMP{uuid.uuid4().hex[:6].upper()}"
+        
+        # Check if employee ID already exists
+        existing = Employee.query.filter_by(employee_id=employee_id).first()
+        if existing:
+            flash(f"Employee ID {employee_id} already exists", "danger")
+            return redirect("/form")
+        
+        # Parse skills from arrays (skill_name[] and skill_exp[])
+        skill_names = request.form.getlist("skill_name[]")
+        skill_exps = request.form.getlist("skill_exp[]")
+        
+        skills_data = {}
+        for i in range(len(skill_names)):
+            skill_name = skill_names[i].strip()
+            if skill_name:  # Only add non-empty skills
+                try:
+                    skill_exp = float(skill_exps[i]) if i < len(skill_exps) and skill_exps[i] else 0
+                except (ValueError, IndexError):
+                    skill_exp = 0
+                skills_data[skill_name] = skill_exp
+        
+        # Parse date of birth
+        dob = None
+        dob_str = request.form.get("dob")
+        if dob_str:
+            try:
+                dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+            except:
+                pass
+        
+        # Parse joining date
+        joining_date = None
+        joining_str = request.form.get("joining_date")
+        if joining_str:
+            try:
+                joining_date = datetime.strptime(joining_str, "%Y-%m-%d").date()
+            except:
+                pass
+        
+        # Parse total experience
+        total_exp = None  # Change default from 0.0 to None initially
+        exp_str = request.form.get("total_exp", "").strip()
+        if exp_str:
+            try:
+                total_exp = float(exp_str)
+                if total_exp < 0:  # Validate non-negative
+                    total_exp = 0.0
+            except ValueError:
+                total_exp = 0.0  # Default to 0 if invalid
+                flash("Invalid experience value, defaulting to 0", "warning")
+        else:
+            total_exp = 0.0  # Default to 0 if empty
 
-    e = Employee(
-        employee_id=employee_id,
-        full_name=request.form["full_name"],
-        email=request.form["email"],
-        department=request.form.get("department"),
-        job_title=request.form.get("job_title"),
-        skills={},
-        performance_score=75.0  # Default performance score
-    )
 
-    db.session.add(e)
-    db.session.commit()
+        
+        # Handle file uploads
+        resume_filename = None
+        profile_pic_filename = None
+        
+        # Handle resume upload
+        if 'resume' in request.files:
+            resume_file = request.files['resume']
+            if resume_file and resume_file.filename != '':
+                if allowed_file(resume_file.filename, ALLOWED_RESUME_EXT):
+                    # Create safe filename with employee_id prefix
+                    original_filename = secure_filename(resume_file.filename)
+                    resume_filename = f"{employee_id}_resume_{original_filename}"
+                    resume_path = os.path.join(app.config['UPLOAD_FOLDER'], resume_filename)
+                    resume_file.save(resume_path)
+                else:
+                    flash("Invalid resume file format. Allowed: pdf, doc, docx", "warning")
+        
+        # Handle profile picture upload
+        if 'profile_pic' in request.files:
+            pic_file = request.files['profile_pic']
+            if pic_file and pic_file.filename != '':
+                if allowed_file(pic_file.filename, ALLOWED_IMAGE_EXT):
+                    # Create safe filename with employee_id prefix
+                    original_filename = secure_filename(pic_file.filename)
+                    profile_pic_filename = f"{employee_id}_profile_{original_filename}"
+                    pic_path = os.path.join(app.config['UPLOAD_FOLDER'], profile_pic_filename)
+                    pic_file.save(pic_path)
+                else:
+                    flash("Invalid image file format. Allowed: png, jpg, jpeg, gif, bmp", "warning")
+        
+        # Create new employee with all fields
+        e = Employee(
+            employee_id=employee_id,
+            full_name=request.form.get("full_name", "").strip(),
+            email=request.form.get("email", "").strip(),
+            password=request.form.get("password"),
+            dob=dob,
+            phone=request.form.get("phone", "").strip(),
+            department=request.form.get("department", "").strip(),
+            job_title=request.form.get("job_title", "").strip(),
+            total_exp=total_exp,
+            skills=skills_data,
+            resume_path=resume_filename,  # Store just filename, not full path
+            profile_pic=profile_pic_filename,  # Store just filename, not full path
+            joining_date=joining_date,
+            status=request.form.get("status", "Active"),
+            manager=request.form.get("manager", "").strip(),
+            performance_score=75.0  # Default performance score
+        )
 
-    flash("Employee added", "success")
-    return redirect("/employees")
-
-
+        # Add to database
+        db.session.add(e)
+        db.session.commit()
+        
+        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
+        return redirect("/employees")
+        
+    except Exception as ex:
+        db.session.rollback()
+        flash(f"❌ Error adding employee: {str(ex)}", "danger")
+        print(f"ERROR in /submit: {str(ex)}")  # Debug in console
+        import traceback
+        traceback.print_exc()  # Full error trace
+        return redirect("/form")
+    
 @app.route("/employees")
 def employees():
+    if "user" not in session:
+        flash("Please login first", "warning")
+        return redirect("/login")
+    
+    all_employees = Employee.query.order_by(Employee.created_at.desc()).all()
+    
+    # Debug: Print to console
+    print(f"📊 DEBUG: Found {len(all_employees)} employees in database")
+    for emp in all_employees:
+        print(f"  - {emp.employee_id}: {emp.full_name}")
+    
     return render_template(
         "employees.html",
-        employees=Employee.query.all()
+        employees=all_employees
     )
 
 # ======================================================
@@ -625,7 +740,7 @@ def delete_project(project_id):
 
 
 # ======================================================
-# API ENDPOINTS
+# API ENDPOINTS (FOR TESTING) - Vishnu
 # ======================================================
 
 @app.route("/api/projects/assignments")
@@ -659,52 +774,6 @@ def project_assignments_api():
 # ======================================================
 # PERFORMANCE API ENDPOINTS
 # ======================================================
-
-@app.route("/api/performance/refresh", methods=["POST"])
-def refresh_performance():
-    """Manually trigger performance recalculation"""
-    try:
-        update_all_performance_scores()
-        avg = get_average_performance()
-        return jsonify({
-            "success": True,
-            "message": "Performance scores updated",
-            "average": avg
-        }), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/performance/update", methods=["POST"])
-def update_performance_api():
-    """
-    API endpoint for employee app to update performance
-    Expected JSON: {"employee_id": "EMP123", "performance_score": 85.5}
-    """
-    try:
-        data = request.get_json()
-        
-        if not data or 'employee_id' not in data or 'performance_score' not in data:
-            return jsonify({"error": "Missing required fields"}), 400
-        
-        employee = Employee.query.filter_by(employee_id=data['employee_id']).first()
-        
-        if not employee:
-            return jsonify({"error": "Employee not found"}), 404
-        
-        employee.performance_score = data['performance_score']
-        db.session.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": f"Performance updated for {employee.full_name}",
-            "new_score": employee.performance_score
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
 
 @app.route("/api/performance/mock-realtime", methods=["GET", "POST"])
 def mock_realtime_performance():
@@ -816,379 +885,6 @@ def mock_realtime_performance():
             "updated_score": employee.performance_score,
             "timestamp": datetime.utcnow().isoformat()
         }), 200
-
-
-@app.route("/api/performance/simulate-update")
-def simulate_performance_update():
-    """
-    Complete performance data export for AI processing
-    Provides raw data to feed Llama + RAG for generating insights
-    """
-    try:
-        # Update all performance scores
-        update_all_performance_scores()
-        
-        employees = Employee.query.all()
-        all_projects = Project.query.all()
-        
-        response = {
-            "success": True,
-            "timestamp": datetime.utcnow().isoformat(),
-            "data_version": "1.0",
-            
-            # ==============================================
-            # 1. RAW EMPLOYEE DATA (For Team Knowledge Base)
-            # ==============================================
-            "employees_data": [],
-            
-            # ==============================================
-            # 2. SKILLS INVENTORY (For Quick Matching)
-            # ==============================================
-            "skills_inventory": {
-                "all_skills": [],
-                "skill_matrix": [],
-                "employees_by_skill": {}
-            },
-            
-            # ==============================================
-            # 3. PROJECT DATA (For Project Matching)
-            # ==============================================
-            "projects_data": [],
-            
-            # ==============================================
-            # 4. PERFORMANCE DATA (For Reviews & Trends)
-            # ==============================================
-            "performance_data": {
-                "overall_stats": {
-                    "total_employees": len(employees),
-                    "average_performance": get_average_performance(),
-                    "performance_distribution": {}
-                },
-                "individual_scores": [],
-                "department_scores": {}
-            },
-            
-            # ==============================================
-            # 5. LEARNING & DEVELOPMENT DATA
-            # ==============================================
-            "learning_development_data": {
-                "skill_gaps": [],
-                "experience_levels": [],
-                "training_history": []
-            },
-            
-            # ==============================================
-            # 6. TEAM COLLABORATION DATA
-            # ==============================================
-            "collaboration_data": {
-                "project_teams": [],
-                "cross_functional_teams": []
-            }
-        }
-        
-        # ==========================================
-        # POPULATE EMPLOYEE DATA
-        # ==========================================
-        all_skills_set = set()
-        employees_by_skill = {}
-        
-        for emp in employees:
-            project_memberships = ProjectMember.query.filter_by(employee_id=emp.employee_id).all()
-            projects_list = []
-            
-            for pm in project_memberships:
-                project = Project.query.get(pm.project_id)
-                if project:
-                    projects_list.append({
-                        "project_id": project.id,
-                        "project_code": project.project_code,
-                        "project_name": project.name,
-                        "role": pm.role
-                    })
-            
-            # Extract skills
-            employee_skills = []
-            if emp.skills:
-                if isinstance(emp.skills, list):
-                    employee_skills = emp.skills
-                elif isinstance(emp.skills, dict):
-                    employee_skills = list(emp.skills.keys())
-            
-            # Build skills index
-            for skill in employee_skills:
-                all_skills_set.add(skill)
-                if skill not in employees_by_skill:
-                    employees_by_skill[skill] = []
-                employees_by_skill[skill].append({
-                    "employee_id": emp.employee_id,
-                    "full_name": emp.full_name,
-                    "experience": emp.total_exp
-                })
-            
-            # Calculate metrics
-            metrics = calculate_performance_metrics(emp)
-            
-            # Build complete employee profile for AI
-            employee_profile = {
-                # Basic Info
-                "employee_id": emp.employee_id,
-                "full_name": emp.full_name,
-                "email": emp.email,
-                "age": calculate_age(emp.dob) if emp.dob else None,
-                "phone": emp.phone,
-                
-                # Professional Info
-                "department": emp.department,
-                "job_title": emp.job_title,
-                "total_experience_years": emp.total_exp,
-                "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
-                "status": emp.status,
-                "manager": emp.manager,
-                
-                # Skills
-                "skills": employee_skills,
-                "skill_count": len(employee_skills),
-                
-                # Performance Metrics (Raw Numbers)
-                "performance_metrics": {
-                    "overall_score": emp.performance_score,
-                    "attendance_score": metrics["attendance"],
-                    "task_completion_score": metrics["task_completion"],
-                    "quality_score": metrics["quality"],
-                    "punctuality_score": metrics["punctuality"],
-                    "project_participation_score": metrics["project_participation"],
-                    "experience_score": metrics["experience_score"],
-                    "profile_completeness": metrics["profile_completeness"]
-                },
-                
-                # Projects
-                "current_projects": projects_list,
-                "project_count": len(projects_list),
-                
-                # Profile Status
-                "profile_data": {
-                    "has_resume": bool(emp.resume_path),
-                    "resume_path": emp.resume_path,
-                    "has_profile_pic": bool(emp.profile_pic),
-                    "profile_pic_path": emp.profile_pic,
-                    "profile_completeness_percentage": calculate_profile_completeness(emp)
-                },
-                
-                # Timestamps
-                "created_at": emp.created_at.isoformat() if emp.created_at else None,
-                "tenure_days": (datetime.utcnow() - emp.created_at).days if emp.created_at else 0
-            }
-            
-            response["employees_data"].append(employee_profile)
-            
-            # Add to performance distribution
-            score_range = f"{int(emp.performance_score // 10) * 10}-{int(emp.performance_score // 10) * 10 + 10}"
-            response["performance_data"]["overall_stats"]["performance_distribution"][score_range] = \
-                response["performance_data"]["overall_stats"]["performance_distribution"].get(score_range, 0) + 1
-            
-            # Add to individual scores
-            response["performance_data"]["individual_scores"].append({
-                "employee_id": emp.employee_id,
-                "full_name": emp.full_name,
-                "score": emp.performance_score,
-                "department": emp.department
-            })
-            
-            # Department scores
-            if emp.department:
-                if emp.department not in response["performance_data"]["department_scores"]:
-                    response["performance_data"]["department_scores"][emp.department] = {
-                        "scores": [],
-                        "count": 0
-                    }
-                response["performance_data"]["department_scores"][emp.department]["scores"].append(emp.performance_score)
-                response["performance_data"]["department_scores"][emp.department]["count"] += 1
-        
-        # Calculate department averages
-        for dept, data in response["performance_data"]["department_scores"].items():
-            data["average"] = round(sum(data["scores"]) / len(data["scores"]), 1)
-        
-        # ==========================================
-        # POPULATE SKILLS INVENTORY
-        # ==========================================
-        response["skills_inventory"]["all_skills"] = sorted(list(all_skills_set))
-        response["skills_inventory"]["employees_by_skill"] = employees_by_skill
-        
-        # Create skill matrix (employees x skills)
-        skill_matrix = []
-        for emp in employees:
-            emp_skills = []
-            if emp.skills:
-                if isinstance(emp.skills, list):
-                    emp_skills = emp.skills
-                elif isinstance(emp.skills, dict):
-                    emp_skills = list(emp.skills.keys())
-            
-            skill_matrix.append({
-                "employee_id": emp.employee_id,
-                "full_name": emp.full_name,
-                "skills": emp_skills,
-                "has_skills": [skill for skill in response["skills_inventory"]["all_skills"] if skill in emp_skills]
-            })
-        
-        response["skills_inventory"]["skill_matrix"] = skill_matrix
-        
-        # ==========================================
-        # POPULATE PROJECT DATA
-        # ==========================================
-        for project in all_projects:
-            members = ProjectMember.query.filter_by(project_id=project.id).all()
-            
-            team_members = []
-            team_skills = set()
-            team_performance_scores = []
-            
-            for member in members:
-                emp = Employee.query.filter_by(employee_id=member.employee_id).first()
-                if emp:
-                    emp_skills = []
-                    if emp.skills:
-                        if isinstance(emp.skills, list):
-                            emp_skills = emp.skills
-                        elif isinstance(emp.skills, dict):
-                            emp_skills = list(emp.skills.keys())
-                    
-                    team_skills.update(emp_skills)
-                    team_performance_scores.append(emp.performance_score)
-                    
-                    team_members.append({
-                        "employee_id": emp.employee_id,
-                        "full_name": emp.full_name,
-                        "role": member.role,
-                        "skills": emp_skills,
-                        "performance_score": emp.performance_score,
-                        "experience": emp.total_exp
-                    })
-            
-            avg_team_performance = round(sum(team_performance_scores) / len(team_performance_scores), 1) if team_performance_scores else 0
-            
-            response["projects_data"].append({
-                "project_id": project.id,
-                "project_code": project.project_code,
-                "project_name": project.name,
-                "description": project.description,
-                "status": project.status,
-                "created_at": project.created_at.isoformat() if project.created_at else None,
-                "team_size": len(team_members),
-                "team_members": team_members,
-                "team_skills": sorted(list(team_skills)),
-                "team_average_performance": avg_team_performance,
-                "team_experience_total": sum([m.get("experience", 0) or 0 for m in team_members])
-            })
-        
-        # ==========================================
-        # POPULATE LEARNING & DEVELOPMENT DATA
-        # ==========================================
-        
-        # Common industry skills for gap analysis
-        industry_standard_skills = [
-            "Python", "JavaScript", "Java", "C++", "React", "Angular", "Vue.js",
-            "Node.js", "Django", "Flask", "Spring Boot", "SQL", "MongoDB",
-            "PostgreSQL", "AWS", "Azure", "GCP", "Docker", "Kubernetes",
-            "CI/CD", "Git", "Agile", "Scrum", "Leadership", "Communication",
-            "Problem Solving", "Team Management", "Data Analysis", "Machine Learning"
-        ]
-        
-        available_skills = response["skills_inventory"]["all_skills"]
-        missing_skills = [skill for skill in industry_standard_skills if skill not in available_skills]
-        
-        response["learning_development_data"]["skill_gaps"] = missing_skills
-        
-        # Experience level distribution
-        experience_levels = {
-            "junior": [],  # 0-2 years
-            "mid": [],     # 2-5 years
-            "senior": [],  # 5+ years
-            "expert": []   # 10+ years
-        }
-        
-        for emp in employees:
-            exp = emp.total_exp or 0
-            emp_data = {"employee_id": emp.employee_id, "full_name": emp.full_name, "experience": exp}
-            
-            if exp < 2:
-                experience_levels["junior"].append(emp_data)
-            elif exp < 5:
-                experience_levels["mid"].append(emp_data)
-            elif exp < 10:
-                experience_levels["senior"].append(emp_data)
-            else:
-                experience_levels["expert"].append(emp_data)
-        
-        response["learning_development_data"]["experience_levels"] = experience_levels
-        
-        # Suggested training based on missing skills
-        response["learning_development_data"]["training_suggestions"] = [
-            {
-                "skill": skill,
-                "priority": "high" if skill in ["Python", "JavaScript", "AWS", "Docker"] else "medium",
-                "employees_needing": len(employees)
-            }
-            for skill in missing_skills[:10]
-        ]
-        
-        # ==========================================
-        # POPULATE COLLABORATION DATA
-        # ==========================================
-        for project in all_projects:
-            members = ProjectMember.query.filter_by(project_id=project.id).all()
-            member_ids = [m.employee_id for m in members]
-            
-            team_data = {
-                "project_code": project.project_code,
-                "project_name": project.name,
-                "team_members": member_ids,
-                "team_size": len(member_ids),
-                "departments": []
-            }
-            
-            # Get departments in this team
-            for member_id in member_ids:
-                emp = Employee.query.filter_by(employee_id=member_id).first()
-                if emp and emp.department and emp.department not in team_data["departments"]:
-                    team_data["departments"].append(emp.department)
-            
-            team_data["is_cross_functional"] = len(team_data["departments"]) > 1
-            
-            response["collaboration_data"]["project_teams"].append(team_data)
-        
-        # Identify cross-functional teams
-        response["collaboration_data"]["cross_functional_teams"] = [
-            team for team in response["collaboration_data"]["project_teams"]
-            if team["is_cross_functional"]
-        ]
-        
-        # ==========================================
-        # ADD METADATA FOR AI PROCESSING
-        # ==========================================
-        response["metadata"] = {
-            "total_employees": len(employees),
-            "total_projects": len(all_projects),
-            "total_skills": len(all_skills_set),
-            "total_departments": len(set([e.department for e in employees if e.department])),
-            "data_quality_score": calculate_data_quality(employees),
-            "suggested_ai_tasks": [
-                "team_knowledge_base_query",
-                "skill_based_project_matching",
-                "team_performance_review_generation",
-                "personalized_learning_path_creation",
-                "team_insights_and_trends_analysis"
-            ]
-        }
-        
-        return jsonify(response), 200
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
-        }), 500
 
 
 # ======================================================

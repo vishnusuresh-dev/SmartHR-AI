@@ -147,7 +147,7 @@
                             <td>
                                 <div class="d-flex align-items-center">
                                     {% if emp.profile_pic %}
-                                        <img src="{{ url_for('static', filename='uploads/' + emp.profile_pic) }}" 
+                                        <img src="{{ url_for('static', filename='../uploads/' + emp.profile_pic) }}"
                                              alt="{{ emp.full_name }}" 
                                              class="rounded-circle me-2" 
                                              style="width: 32px; height: 32px;">
@@ -166,7 +166,11 @@
                             <td>{{ emp.department or '—' }}</td>
                             <td>{{ emp.job_title or '—' }}</td>
                             <td class="text-center">
-                                {{ emp.total_exp if emp.total_exp else '—' }}
+                                {% if emp.total_exp is not none and emp.total_exp > 0 %}
+                                    {{ emp.total_exp }}
+                                {% else %}
+                                    <span class="text-muted">0</span>
+                                {% endif %}
                             </td>
 
                             <!-- Skills with better display -->
