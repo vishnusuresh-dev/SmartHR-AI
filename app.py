@@ -281,6 +281,14 @@ def project_assignments_api():
 
     return jsonify({"projects": response})
 
+@app.route("/projects/<int:project_id>/delete", methods=["POST"])
+def delete_project(project_id):
+    project = Project.query.get_or_404(project_id)
+    ProjectMember.query.filter_by(project_id=project_id).delete()
+    db.session.delete(project)
+    db.session.commit()
+    flash("Project deleted successfully", "success")
+    return redirect("/projects")
 
 # ======================================================
 # DB INIT
