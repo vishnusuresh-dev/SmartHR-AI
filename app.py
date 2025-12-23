@@ -230,6 +230,48 @@ def remove_member(project_id, employee_id):
         flash("Member not found", "warning")
     
     return redirect("/projects")
+@app.route("/projects/create", methods=["POST"])
+def create_project():
+    # Get form data
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip()
+    
+    # Validate project name
+    if not name:
+        flash("Project name is required", "danger")
+        return redirect("/projects")
+    
+    # Check if project with same name already exists
+    existing_project = Project.query.filter_by(name=name).first()
+    if existing_project:
+        flash(f"Project with name '{name}' already exists", "warning")
+        return redirect("/projects")
+    
+    # Generate unique project code
+    project_code = "PROJ" + uuid.uuid4().hex[:5].upper()
+    
+    # Ensure project code is unique (very unlikely to collide, but let's be safe)
+    while Project.query.filter_by(project_code=project_code).first():
+        project_code = "PROJ" + uuid.uuid4().hex[:5].upper()
+    
+    # Create new project
+    try:
+        new_project = Project(
+            project_code=project_code,
+            name=name,
+            description=description if description else None,
+            status="Active"
+        )
+        
+        db.session.add(new_project)
+        db.session.commit()
+        
+        flash(f"Project '{name}' created successfully with code {project_code}", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error creating project: {str(e)}", "danger")
+    
+    return redirect("/projects")
 
 @app.route("/projects/<project_id>/assign", methods=["POST"])
 def assign_members(project_id):
@@ -281,14 +323,6 @@ def project_assignments_api():
 
     return jsonify({"projects": response})
 
-@app.route("/projects/<int:project_id>/delete", methods=["POST"])
-def delete_project(project_id):
-    project = Project.query.get_or_404(project_id)
-    ProjectMember.query.filter_by(project_id=project_id).delete()
-    db.session.delete(project)
-    db.session.commit()
-    flash("Project deleted successfully", "success")
-    return redirect("/projects")
 
 # ======================================================
 # DB INIT
