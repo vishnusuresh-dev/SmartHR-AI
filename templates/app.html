@@ -59,7 +59,11 @@
                     <div class="stat-icon bg-green">📈</div>
                 </div>
                 <p class="stat-label">Avg Performance</p>
-                <p class="stat-value">87%</p>
+                <p class="stat-value">{{ avg_performance }}%</p>
+                <!-- Add this in the header-actions section or as a new button -->
+                <a href="{{ url_for('performance_dashboard') }}">
+                 <button class="user-btn">Performance</button>
+                </a>
             </div>
             <div class="stat-card">
                 <div class="stat-header">
