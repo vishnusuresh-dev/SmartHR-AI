@@ -321,9 +321,15 @@
                 <h2>Welcome Back</h2>
                 <p>Sign in to access your HR dashboard</p>
             </div>
-            {% if error %}
-            <div class="alert error show">{{ error }}</div>
-            {% endif %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert error show">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
             <form method="POST" action="/login">
                 <div class="form-group">
@@ -346,5 +352,15 @@
             </form>
         </div>
     </div>
+    <script>
+        setTimeout(() => {
+            const alert = document.querySelector('.alert.show');
+            if (alert) {
+                alert.style.opacity = '0';
+                alert.style.transform = 'translateY(-10px)';
+                setTimeout(() => alert.remove(), 300);
+            }
+        }, 3000); // disappears after 3 seconds
+    </script>
 </body>
 </html>
