@@ -283,7 +283,7 @@ def login():
         if USERS.get(request.form["username"]) == request.form["password"]:
             session["user"] = request.form["username"]
             return redirect(url_for("dashboard"))
-        flash("Invalid credentials", "danger")
+        flash("Username or password is incorrect", "danger")
     return render_template("login.html")
 
 
