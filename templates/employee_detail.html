@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ employee.full_name }} - Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        body { background: #eef2f7; }
+        .detail-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+        .info-label {
+            color: #6b7280;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        .info-value {
+            font-size: 1.125rem;
+            color: #1f2937;
+            margin-bottom: 1rem;
+        }
+        .skill-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            margin: 0.25rem;
+            background: #e0e7ff;
+            color: #4338ca;
+            border-radius: 0.5rem;
+            font-weight: 500;
+        }
+        .project-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .performance-score {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #4f46e5;
+        }
+        .metric-box {
+            background: #f9fafb;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+        .back-btn {
+            padding: 0.5rem 1.5rem;
+            border-radius: 0.75rem;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+            color: white;
+        }
+        /* Modern Unassign Button */
+        .unassign-btn-modern {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.2rem 0.5rem;
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+            border-radius: 0.5rem;
+            font-size: 0.713rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .unassign-btn-modern:hover {
+            background: linear-gradient(135deg, #fca5a5 0%, #f87171 100%);
+            color: white;
+            border-color: #ef4444;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+        }
+
+        .unassign-btn-modern:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .unassign-btn-modern i {
+            font-size: 0.8rem;
+        }
+
+        /* Modern Status Badge */
+        .status-badge-modern {
+            padding: 0.5rem 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+        }
+
+        /* Enhanced Project Card */
+        .project-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            background: white;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .project-card:hover {
+            border-color: #d1d5db;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transform: translateY(-2px);
+        }
+
+        .project-card h5 {
+            color: #1f2937;
+            font-weight: 600;
+        }
+
+        .project-card .text-muted {
+            color: #6b7280 !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container my-5">
+    <div class="detail-card">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h1 class="mb-1">{{ employee.full_name }}</h1>
+                <p class="text-muted mb-0">
+                    <i class="bi bi-briefcase"></i> {{ employee.job_title or 'No title' }} 
+                    | <i class="bi bi-building"></i> {{ employee.department or 'No department' }}
+                </p>
+            </div>
+            <a href="{{ url_for('employees') }}" class="back-btn">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <!-- Basic Information -->
+                <h4 class="mb-3"><i class="bi bi-person-badge"></i> Basic Information</h4>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="info-label">Employee ID</div>
+                        <div class="info-value">{{ employee.employee_id }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-label">Email</div>
+                        <div class="info-value">{{ employee.email }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-label">Phone</div>
+                        <div class="info-value">{{ employee.phone or '—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-label">Status</div>
+                        <div class="info-value">
+                            <span class="badge bg-{{ 'success' if employee.status == 'Active' else 'secondary' }}">
+                                {{ employee.status or 'Unknown' }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-label">Total Experience</div>
+                        <div class="info-value">{{ employee.total_exp or 0 }} years</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-label">Manager</div>
+                        <div class="info-value">{{ employee.manager or '—' }}</div>
+                    </div>
+                </div>
+
+                <!-- Skills Section -->
+                <h4 class="mt-4 mb-3"><i class="bi bi-tools"></i> Skills</h4>
+                <div>
+                    {% if employee.skills %}
+                        {% if employee.skills is mapping %}
+                            {% for name, exp in employee.skills.items() %}
+                                <span class="skill-badge">{{ name }} ({{ exp }} yrs)</span>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No skills data</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted">No skills listed</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <!-- Performance Score -->
+                <div class="metric-box mb-3">
+                    <div class="info-label">Performance Score</div>
+                    <div class="performance-score">{{ employee.performance_score or 75 }}</div>
+                    <div class="text-muted">
+                        <i class="bi bi-arrow-{{ performance_trend }}"></i>
+                        {{ performance_trend|title }}
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="metric-box">
+                    <div class="info-label">Active Projects</div>
+                    <h3 class="mb-0">{{ projects|length }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+  <!-- Projects Section -->
+      {% if projects %}
+      <div class="detail-card">
+          <h4 class="mb-3"><i class="bi bi-folder"></i> Active Projects ({{ projects|length }})</h4>
+          {% for proj in projects %}
+          <div class="project-card">
+              <div class="d-flex justify-content-between align-items-start">
+                  <div class="flex-grow-1">
+                      <h5 class="mb-1">{{ proj.project.name }}</h5>
+                      <p class="text-muted mb-1">
+                          <strong>Code:</strong> {{ proj.project.project_code }} | 
+                          <strong>Role:</strong> {{ proj.role }}
+                      </p>
+                      <p class="text-muted mb-0">
+                          <i class="bi bi-people"></i> Team size: {{ proj.team_size }}
+                      </p>
+                      {% if proj.project.description %}
+                      <p class="text-muted mt-2 mb-0">
+                          <small>{{ proj.project.description }}</small>
+                      </p>
+                      {% endif %}
+                  </div>
+                  <div class="d-flex align-items-start gap-2">
+                      <span class="badge bg-{{ 'success' if proj.project.status == 'Active' else 'secondary' }} status-badge-modern">
+                          {{ proj.project.status }}
+                      </span>
+                      <!-- Modern Unassign Button -->
+                      <form method="POST" 
+                            action="{{ url_for('unassign_employee_from_project', employee_id=employee.employee_id, project_id=proj.project.id) }}"
+                            style="display: inline;"
+                            onsubmit="return confirm('⚠️ Unassign {{ employee.full_name }} from {{ proj.project.name }}?');">
+                          <button type="submit" class="unassign-btn-modern" title="Remove from project">
+                              <i class="bi bi-box-arrow-right"></i>
+                              <span>Remove</span>
+                          </button>
+                      </form>
+                  </div>
+              </div>
+          </div>
+          {% endfor %}
+      </div>
+      {% else %}
+      <div class="detail-card">
+          <h4 class="mb-3"><i class="bi bi-folder"></i> Active Projects</h4>
+          <div class="text-center py-4">
+              <i class="bi bi-inbox" style="font-size: 3rem; color: #9ca3af;"></i>
+              <p class="text-muted mt-3">Not assigned to any projects yet</p>
+          </div>
+      </div>
+      {% endif %}
+
+    <!-- Performance Metrics -->
+    <div class="detail-card">
+        <h4 class="mb-4"><i class="bi bi-graph-up"></i> Performance Metrics</h4>
+        <div class="row">
+            <div class="col-md-3 col-6 mb-3">
+                <div class="metric-box">
+                    <div class="info-label">Attendance</div>
+                    <h4 class="mb-0">{{ metrics.attendance }}%</h4>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 mb-3">
+                <div class="metric-box">
+                    <div class="info-label">Task Completion</div>
+                    <h4 class="mb-0">{{ metrics.task_completion }}%</h4>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 mb-3">
+                <div class="metric-box">
+                    <div class="info-label">Quality</div>
+                    <h4 class="mb-0">{{ metrics.quality }}%</h4>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 mb-3">
+                <div class="metric-box">
+                    <div class="info-label">Punctuality</div>
+                    <h4 class="mb-0">{{ metrics.punctuality }}%</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

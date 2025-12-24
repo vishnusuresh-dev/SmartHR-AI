@@ -113,6 +113,42 @@ def allowed_file(filename, allowed_set):
 
 USERS = {"admin": "admin123"}
 
+# Add this after your helper functions section (around line 240)
+
+def cleanup_orphaned_files():
+    """Remove uploaded files that don't have corresponding database entries"""
+    if not os.path.exists(UPLOAD_FOLDER):
+        return []
+    
+    # Get all files in uploads folder
+    uploaded_files = set(os.listdir(UPLOAD_FOLDER))
+    
+    # Get all file references from database
+    employees = Employee.query.all()
+    db_files = set()
+    
+    for emp in employees:
+        if emp.resume_path:
+            db_files.add(emp.resume_path)
+        if emp.profile_pic:
+            db_files.add(emp.profile_pic)
+    
+    # Find orphaned files
+    orphaned_files = uploaded_files - db_files
+    
+    # Delete orphaned files
+    deleted = []
+    for filename in orphaned_files:
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        try:
+            if os.path.isfile(file_path):  # Only delete files, not directories
+                os.remove(file_path)
+                deleted.append(filename)
+        except OSError as e:
+            print(f"Error deleting orphaned file {filename}: {e}")
+    
+    return deleted
+
 
 # ======================================================
 # PERFORMANCE CALCULATION HELPERS
@@ -435,7 +471,7 @@ def employees():
 
 @app.route("/delete_employee/<int:emp_id>", methods=["POST"])
 def delete_employee(emp_id):
-    """Delete an employee and cleanup related data"""
+    """Delete an employee and cleanup related data including uploaded files"""
     if "user" not in session:
         return redirect("/login")
     
@@ -445,21 +481,49 @@ def delete_employee(emp_id):
         employee_id = employee.employee_id
         employee_name = employee.full_name
         
+        # Delete uploaded files from filesystem
+        files_deleted = []
+        
+        # Delete resume file if exists
+        if employee.resume_path:
+            resume_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.resume_path)
+            if os.path.exists(resume_full_path):
+                try:
+                    os.remove(resume_full_path)
+                    files_deleted.append(f"resume: {employee.resume_path}")
+                except OSError as e:
+                    print(f"Error deleting resume file: {e}")
+        
+        # Delete profile picture if exists
+        if employee.profile_pic:
+            pic_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.profile_pic)
+            if os.path.exists(pic_full_path):
+                try:
+                    os.remove(pic_full_path)
+                    files_deleted.append(f"profile pic: {employee.profile_pic}")
+                except OSError as e:
+                    print(f"Error deleting profile picture: {e}")
+        
         # Delete all project memberships for this employee
         ProjectMember.query.filter_by(employee_id=employee_id).delete()
         
-        # Delete the employee
+        # Delete the employee from database
         db.session.delete(employee)
         db.session.commit()
         
-        flash(f"Employee {employee_name} deleted successfully", "success")
+        # Create success message
+        success_msg = f"Employee {employee_name} deleted successfully"
+        if files_deleted:
+            success_msg += f" (Removed: {', '.join(files_deleted)})"
+        
+        flash(success_msg, "success")
         
     except Exception as e:
         db.session.rollback()
         flash(f"Error deleting employee: {str(e)}", "danger")
+        print(f"ERROR in delete_employee: {str(e)}")
     
     return redirect("/employees")
-
 
 # ======================================================
 # EMPLOYEE EDIT ROUTE (Optional - for future enhancement)
@@ -509,7 +573,41 @@ def edit_employee(emp_id):
     # GET request - render edit form
     return render_template("edit_employee.html", employee=employee)
 
-
+@app.route("/employee/<string:employee_id>/unassign/<int:project_id>", methods=["POST"])
+def unassign_employee_from_project(employee_id, project_id):
+    """Unassign an employee from a specific project from employee detail page"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    try:
+        # Find the project membership
+        member = ProjectMember.query.filter_by(
+            project_id=project_id,
+            employee_id=employee_id
+        ).first()
+        
+        if member:
+            # Get project and employee names for flash message
+            project = Project.query.get(project_id)
+            employee = Employee.query.filter_by(employee_id=employee_id).first()
+            
+            project_name = project.name if project else "Unknown Project"
+            employee_name = employee.full_name if employee else employee_id
+            
+            # Delete the membership
+            db.session.delete(member)
+            db.session.commit()
+            
+            flash(f"Successfully unassigned {employee_name} from {project_name}", "success")
+        else:
+            flash("Project assignment not found", "warning")
+    
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error unassigning from project: {str(e)}", "danger")
+    
+    # Redirect back to employee detail page
+    return redirect(url_for('view_employee', employee_id=employee_id))
 # ======================================================
 # VIEW SINGLE EMPLOYEE DETAILS (Optional enhancement)
 # ======================================================
