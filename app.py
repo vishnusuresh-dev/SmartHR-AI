@@ -1,8 +1,6 @@
-# app.py
 import uuid
-import json
-from datetime import datetime, timedelta
 import random
+from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -41,7 +39,7 @@ class Employee(db.Model):
     __tablename__ = "employees"
 
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.String(64), unique=True, nullable=False)  # GLOBAL ID
+    employee_id = db.Column(db.String(64), unique=True, nullable=False)
     full_name = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(200), nullable=False)
     password = db.Column(db.String(200))
@@ -57,8 +55,6 @@ class Employee(db.Model):
     status = db.Column(db.String(50))
     manager = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # NEW: Performance field
     performance_score = db.Column(db.Float, default=75.0)
 
     def to_dict(self):
@@ -72,9 +68,6 @@ class Employee(db.Model):
         }
 
 
-# ---------------------------
-# Project model
-# ---------------------------
 class Project(db.Model):
     __tablename__ = "projects"
 
@@ -86,18 +79,14 @@ class Project(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-# ---------------------------
-# Project Members
-# ---------------------------
 class ProjectMember(db.Model):
     __tablename__ = "project_members"
 
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id"))
-    employee_id = db.Column(db.String(64))  # employee.employee_id
+    employee_id = db.Column(db.String(64))
     role = db.Column(db.String(100))
     
-    # Add unique constraint
     __table_args__ = (
         db.UniqueConstraint('project_id', 'employee_id', name='unique_project_member'),
     )
@@ -113,96 +102,44 @@ def allowed_file(filename, allowed_set):
 
 USERS = {"admin": "admin123"}
 
-# Add this after your helper functions section (around line 240)
-
-def cleanup_orphaned_files():
-    """Remove uploaded files that don't have corresponding database entries"""
-    if not os.path.exists(UPLOAD_FOLDER):
-        return []
-    
-    # Get all files in uploads folder
-    uploaded_files = set(os.listdir(UPLOAD_FOLDER))
-    
-    # Get all file references from database
-    employees = Employee.query.all()
-    db_files = set()
-    
-    for emp in employees:
-        if emp.resume_path:
-            db_files.add(emp.resume_path)
-        if emp.profile_pic:
-            db_files.add(emp.profile_pic)
-    
-    # Find orphaned files
-    orphaned_files = uploaded_files - db_files
-    
-    # Delete orphaned files
-    deleted = []
-    for filename in orphaned_files:
-        file_path = os.path.join(UPLOAD_FOLDER, filename)
-        try:
-            if os.path.isfile(file_path):  # Only delete files, not directories
-                os.remove(file_path)
-                deleted.append(filename)
-        except OSError as e:
-            print(f"Error deleting orphaned file {filename}: {e}")
-    
-    return deleted
-
-
-# ======================================================
-# PERFORMANCE CALCULATION HELPERS
-# ======================================================
 
 def calculate_random_performance(employee):
-    """
-    Calculate random but realistic performance score based on multiple factors
-    This simulates what the employee app would calculate
-    """
-    base_score = 60  # Base score
+    """Calculate random but realistic performance score"""
+    base_score = 60
     
-    # Factor 1: Project participation (0-15 points)
+    # Project participation (0-15 points)
     project_count = ProjectMember.query.filter_by(employee_id=employee.employee_id).count()
-    if project_count > 0:
-        project_score = min(project_count * 5, 15)
-    else:
-        project_score = 0
+    project_score = min(project_count * 5, 15)
     
-    # Factor 2: Skills count (0-10 points)
-    if employee.skills and isinstance(employee.skills, (list, dict)):
+    # Skills count (0-10 points)
+    if employee.skills:
         skill_count = len(employee.skills) if isinstance(employee.skills, list) else len(employee.skills.keys())
         skill_score = min(skill_count * 2, 10)
     else:
         skill_score = 0
     
-    # Factor 3: Experience (0-10 points)
-    if employee.total_exp:
-        exp_score = min(employee.total_exp * 1.5, 10)
-    else:
-        exp_score = 0
+    # Experience (0-10 points)
+    exp_score = min((employee.total_exp or 0) * 1.5, 10)
     
-    # Factor 4: Profile completeness (0-5 points)
-    completeness = 0
-    if employee.resume_path: completeness += 1
-    if employee.profile_pic: completeness += 1
-    if employee.phone: completeness += 1
-    if employee.department: completeness += 1
-    if employee.skills: completeness += 1
+    # Profile completeness (0-5 points)
+    completeness = sum([
+        bool(employee.resume_path),
+        bool(employee.profile_pic),
+        bool(employee.phone),
+        bool(employee.department),
+        bool(employee.skills)
+    ])
     
-    # Factor 5: Random variation (simulates daily performance fluctuation) (-5 to +10)
+    # Random variation (-5 to +10)
     random_factor = random.uniform(-5, 10)
     
-    # Calculate total
     total_score = base_score + project_score + skill_score + exp_score + completeness + random_factor
-    
-    # Cap between 40 and 100
     return round(max(40, min(100, total_score)), 1)
 
 
 def update_all_performance_scores():
     """Update performance scores for all employees"""
-    employees = Employee.query.all()
-    for emp in employees:
+    for emp in Employee.query.all():
         emp.performance_score = calculate_random_performance(emp)
     db.session.commit()
 
@@ -211,65 +148,63 @@ def get_average_performance():
     """Calculate average performance of all employees"""
     employees = Employee.query.all()
     if not employees:
-        return 0
+        return 75.0
     
     scores = [emp.performance_score for emp in employees if emp.performance_score is not None]
-    if not scores:
-        return 75.0  # Default
-    
-    return round(sum(scores) / len(scores), 1)
+    return round(sum(scores) / len(scores), 1) if scores else 75.0
 
 
 def calculate_performance_metrics(employee):
     """Calculate detailed performance metrics for an employee"""
-    
-    # Project participation score
     project_count = ProjectMember.query.filter_by(employee_id=employee.employee_id).count()
-    project_score = min((project_count * 5), 15)
+    project_score = min(project_count * 5, 15)
     
-    # Skills score
-    if employee.skills and isinstance(employee.skills, (list, dict)):
+    if employee.skills:
         skill_count = len(employee.skills) if isinstance(employee.skills, list) else len(employee.skills.keys())
         skill_score = min(skill_count * 2, 10)
     else:
         skill_score = 0
     
-    # Experience score
-    exp_score = min((employee.total_exp or 0) * 1.5, 10) if employee.total_exp else 0
+    exp_score = min((employee.total_exp or 0) * 1.5, 10)
     
-    # Profile completeness
-    completeness_items = [employee.resume_path, employee.profile_pic, employee.phone, 
-                          employee.department, employee.skills]
-    completeness = sum(1 for item in completeness_items if item)
-    
-    # Simulated metrics (these would come from employee app in production)
-    attendance = round(random.uniform(85, 98), 1)
-    task_completion = round(random.uniform(80, 95), 1)
-    quality = round(random.uniform(75, 95), 1)
-    punctuality = round(random.uniform(85, 98), 1)
+    completeness = sum([
+        bool(employee.resume_path),
+        bool(employee.profile_pic),
+        bool(employee.phone),
+        bool(employee.department),
+        bool(employee.skills)
+    ])
     
     return {
         "project_participation": round(project_score, 1),
         "skills_score": round(skill_score, 1),
         "experience_score": round(exp_score, 1),
         "profile_completeness": completeness,
-        "attendance": attendance,
-        "task_completion": task_completion,
-        "quality": quality,
-        "punctuality": punctuality
+        "attendance": round(random.uniform(85, 98), 1),
+        "task_completion": round(random.uniform(80, 95), 1),
+        "quality": round(random.uniform(75, 95), 1),
+        "punctuality": round(random.uniform(85, 98), 1)
     }
 
 
 def get_performance_trend(score):
     """Determine performance trend"""
-    if score is None:
-        return "stable"
-    if score >= 85:
-        return "up"
-    elif score >= 70:
-        return "stable"
-    else:
-        return "down"
+    if score is None or score >= 70:
+        return "up" if score and score >= 85 else "stable"
+    return "down"
+
+
+def delete_file_safely(filename):
+    """Delete a file from uploads folder safely"""
+    if filename:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                return True
+            except OSError as e:
+                print(f"Error deleting file {filename}: {e}")
+    return False
 
 
 # ======================================================
@@ -298,18 +233,13 @@ def dashboard():
     if "user" not in session:
         return redirect("/login")
     
-    # Update performance scores on each dashboard load
-    # (In production, this would be done by employee app via API)
     update_all_performance_scores()
-    
-    # Calculate average
-    avg_performance = get_average_performance()
     
     return render_template(
         "app.html",
         total_employees=Employee.query.count(),
         total_projects=Project.query.count(),
-        avg_performance=avg_performance
+        avg_performance=get_average_performance()
     )
 
 
@@ -325,94 +255,70 @@ def form():
 @app.route("/submit", methods=["POST"])
 def submit():
     try:
-        # Generate or use provided employee ID
         employee_id = request.form.get("employee_id") or f"EMP{uuid.uuid4().hex[:6].upper()}"
         
-        # Check if employee ID already exists
-        existing = Employee.query.filter_by(employee_id=employee_id).first()
-        if existing:
+        if Employee.query.filter_by(employee_id=employee_id).first():
             flash(f"Employee ID {employee_id} already exists", "danger")
             return redirect("/form")
         
-        # Parse skills from arrays (skill_name[] and skill_exp[])
+        # Parse skills
         skill_names = request.form.getlist("skill_name[]")
         skill_exps = request.form.getlist("skill_exp[]")
-        
         skills_data = {}
-        for i in range(len(skill_names)):
-            skill_name = skill_names[i].strip()
-            if skill_name:  # Only add non-empty skills
+        
+        for i, skill_name in enumerate(skill_names):
+            if skill_name.strip():
                 try:
                     skill_exp = float(skill_exps[i]) if i < len(skill_exps) and skill_exps[i] else 0
                 except (ValueError, IndexError):
                     skill_exp = 0
-                skills_data[skill_name] = skill_exp
+                skills_data[skill_name.strip()] = skill_exp
         
-        # Parse date of birth
+        # Parse dates
         dob = None
-        dob_str = request.form.get("dob")
-        if dob_str:
+        if request.form.get("dob"):
             try:
-                dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+                dob = datetime.strptime(request.form.get("dob"), "%Y-%m-%d").date()
             except:
                 pass
         
-        # Parse joining date
         joining_date = None
-        joining_str = request.form.get("joining_date")
-        if joining_str:
+        if request.form.get("joining_date"):
             try:
-                joining_date = datetime.strptime(joining_str, "%Y-%m-%d").date()
+                joining_date = datetime.strptime(request.form.get("joining_date"), "%Y-%m-%d").date()
             except:
                 pass
         
-        # Parse total experience
-        total_exp = None  # Change default from 0.0 to None initially
-        exp_str = request.form.get("total_exp", "").strip()
-        if exp_str:
+        # Parse experience
+        total_exp = 0.0
+        if request.form.get("total_exp", "").strip():
             try:
-                total_exp = float(exp_str)
-                if total_exp < 0:  # Validate non-negative
-                    total_exp = 0.0
+                total_exp = max(0.0, float(request.form.get("total_exp")))
             except ValueError:
-                total_exp = 0.0  # Default to 0 if invalid
                 flash("Invalid experience value, defaulting to 0", "warning")
-        else:
-            total_exp = 0.0  # Default to 0 if empty
-
-
         
         # Handle file uploads
         resume_filename = None
-        profile_pic_filename = None
-        
-        # Handle resume upload
         if 'resume' in request.files:
             resume_file = request.files['resume']
-            if resume_file and resume_file.filename != '':
-                if allowed_file(resume_file.filename, ALLOWED_RESUME_EXT):
-                    # Create safe filename with employee_id prefix
-                    original_filename = secure_filename(resume_file.filename)
-                    resume_filename = f"{employee_id}_resume_{original_filename}"
-                    resume_path = os.path.join(app.config['UPLOAD_FOLDER'], resume_filename)
-                    resume_file.save(resume_path)
-                else:
-                    flash("Invalid resume file format. Allowed: pdf, doc, docx", "warning")
+            if resume_file and resume_file.filename and allowed_file(resume_file.filename, ALLOWED_RESUME_EXT):
+                original_filename = secure_filename(resume_file.filename)
+                resume_filename = f"{employee_id}_resume_{original_filename}"
+                resume_file.save(os.path.join(app.config['UPLOAD_FOLDER'], resume_filename))
+            elif resume_file and resume_file.filename:
+                flash("Invalid resume file format. Allowed: pdf, doc, docx", "warning")
         
-        # Handle profile picture upload
+        profile_pic_filename = None
         if 'profile_pic' in request.files:
             pic_file = request.files['profile_pic']
-            if pic_file and pic_file.filename != '':
-                if allowed_file(pic_file.filename, ALLOWED_IMAGE_EXT):
-                    # Create safe filename with employee_id prefix
-                    original_filename = secure_filename(pic_file.filename)
-                    profile_pic_filename = f"{employee_id}_profile_{original_filename}"
-                    pic_path = os.path.join(app.config['UPLOAD_FOLDER'], profile_pic_filename)
-                    pic_file.save(pic_path)
-                else:
-                    flash("Invalid image file format. Allowed: png, jpg, jpeg, gif, bmp", "warning")
+            if pic_file and pic_file.filename and allowed_file(pic_file.filename, ALLOWED_IMAGE_EXT):
+                original_filename = secure_filename(pic_file.filename)
+                profile_pic_filename = f"{employee_id}_profile_{original_filename}"
+                pic_file.save(os.path.join(app.config['UPLOAD_FOLDER'], profile_pic_filename))
+            elif pic_file and pic_file.filename:
+                flash("Invalid image file format. Allowed: png, jpg, jpeg, gif, bmp", "warning")
         
-        # Create new employee with all fields
+        # Create employee
         e = Employee(
             employee_id=employee_id,
             full_name=request.form.get("full_name", "").strip(),
@@ -424,15 +330,14 @@ def submit():
             job_title=request.form.get("job_title", "").strip(),
             total_exp=total_exp,
             skills=skills_data,
-            resume_path=resume_filename,  # Store just filename, not full path
-            profile_pic=profile_pic_filename,  # Store just filename, not full path
+            resume_path=resume_filename,
+            profile_pic=profile_pic_filename,
             joining_date=joining_date,
             status=request.form.get("status", "Active"),
             manager=request.form.get("manager", "").strip(),
-            performance_score=75.0  # Default performance score
+            performance_score=75.0
         )
 
-        # Add to database
         db.session.add(e)
         db.session.commit()
         
@@ -442,11 +347,11 @@ def submit():
     except Exception as ex:
         db.session.rollback()
         flash(f"❌ Error adding employee: {str(ex)}", "danger")
-        print(f"ERROR in /submit: {str(ex)}")  # Debug in console
         import traceback
-        traceback.print_exc()  # Full error trace
+        traceback.print_exc()
         return redirect("/form")
-    
+
+
 @app.route("/employees")
 def employees():
     if "user" not in session:
@@ -454,64 +359,33 @@ def employees():
         return redirect("/login")
     
     all_employees = Employee.query.order_by(Employee.created_at.desc()).all()
-    
-    # Debug: Print to console
-    print(f"📊 DEBUG: Found {len(all_employees)} employees in database")
-    for emp in all_employees:
-        print(f"  - {emp.employee_id}: {emp.full_name}")
-    
-    return render_template(
-        "employees.html",
-        employees=all_employees
-    )
+    return render_template("employees.html", employees=all_employees)
 
-# ======================================================
-# EMPLOYEE DELETE ROUTE (Add this to your app.py)
-# ======================================================
 
 @app.route("/delete_employee/<int:emp_id>", methods=["POST"])
 def delete_employee(emp_id):
-    """Delete an employee and cleanup related data including uploaded files"""
+    """Delete an employee and cleanup related data"""
     if "user" not in session:
         return redirect("/login")
     
     try:
-        # Find the employee
         employee = Employee.query.get_or_404(emp_id)
-        employee_id = employee.employee_id
         employee_name = employee.full_name
         
-        # Delete uploaded files from filesystem
+        # Delete uploaded files
         files_deleted = []
+        if delete_file_safely(employee.resume_path):
+            files_deleted.append(f"resume: {employee.resume_path}")
+        if delete_file_safely(employee.profile_pic):
+            files_deleted.append(f"profile pic: {employee.profile_pic}")
         
-        # Delete resume file if exists
-        if employee.resume_path:
-            resume_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.resume_path)
-            if os.path.exists(resume_full_path):
-                try:
-                    os.remove(resume_full_path)
-                    files_deleted.append(f"resume: {employee.resume_path}")
-                except OSError as e:
-                    print(f"Error deleting resume file: {e}")
+        # Delete project memberships
+        ProjectMember.query.filter_by(employee_id=employee.employee_id).delete()
         
-        # Delete profile picture if exists
-        if employee.profile_pic:
-            pic_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.profile_pic)
-            if os.path.exists(pic_full_path):
-                try:
-                    os.remove(pic_full_path)
-                    files_deleted.append(f"profile pic: {employee.profile_pic}")
-                except OSError as e:
-                    print(f"Error deleting profile picture: {e}")
-        
-        # Delete all project memberships for this employee
-        ProjectMember.query.filter_by(employee_id=employee_id).delete()
-        
-        # Delete the employee from database
+        # Delete employee
         db.session.delete(employee)
         db.session.commit()
         
-        # Create success message
         success_msg = f"Employee {employee_name} deleted successfully"
         if files_deleted:
             success_msg += f" (Removed: {', '.join(files_deleted)})"
@@ -521,13 +395,9 @@ def delete_employee(emp_id):
     except Exception as e:
         db.session.rollback()
         flash(f"Error deleting employee: {str(e)}", "danger")
-        print(f"ERROR in delete_employee: {str(e)}")
     
     return redirect("/employees")
 
-# ======================================================
-# EMPLOYEE EDIT ROUTE (Optional - for future enhancement)
-# ======================================================
 
 @app.route("/edit_employee/<int:emp_id>", methods=["GET", "POST"])
 def edit_employee(emp_id):
@@ -539,7 +409,6 @@ def edit_employee(emp_id):
     
     if request.method == "POST":
         try:
-            # Update employee fields
             employee.full_name = request.form.get("full_name", employee.full_name)
             employee.email = request.form.get("email", employee.email)
             employee.department = request.form.get("department", employee.department)
@@ -548,17 +417,13 @@ def edit_employee(emp_id):
             employee.manager = request.form.get("manager", employee.manager)
             employee.status = request.form.get("status", employee.status)
             
-            # Update total experience
-            total_exp = request.form.get("total_exp")
-            if total_exp:
-                employee.total_exp = float(total_exp)
+            if request.form.get("total_exp"):
+                employee.total_exp = float(request.form.get("total_exp"))
             
-            # Update skills if provided (expects JSON format)
-            skills_input = request.form.get("skills")
-            if skills_input:
+            if request.form.get("skills"):
                 import json
                 try:
-                    employee.skills = json.loads(skills_input)
+                    employee.skills = json.loads(request.form.get("skills"))
                 except json.JSONDecodeError:
                     flash("Invalid skills format. Use JSON format.", "warning")
             
@@ -570,35 +435,26 @@ def edit_employee(emp_id):
             db.session.rollback()
             flash(f"Error updating employee: {str(e)}", "danger")
     
-    # GET request - render edit form
     return render_template("edit_employee.html", employee=employee)
+
 
 @app.route("/employee/<string:employee_id>/unassign/<int:project_id>", methods=["POST"])
 def unassign_employee_from_project(employee_id, project_id):
-    """Unassign an employee from a specific project from employee detail page"""
+    """Unassign an employee from a project"""
     if "user" not in session:
         return redirect("/login")
     
     try:
-        # Find the project membership
-        member = ProjectMember.query.filter_by(
-            project_id=project_id,
-            employee_id=employee_id
-        ).first()
+        member = ProjectMember.query.filter_by(project_id=project_id, employee_id=employee_id).first()
         
         if member:
-            # Get project and employee names for flash message
             project = Project.query.get(project_id)
             employee = Employee.query.filter_by(employee_id=employee_id).first()
             
-            project_name = project.name if project else "Unknown Project"
-            employee_name = employee.full_name if employee else employee_id
-            
-            # Delete the membership
             db.session.delete(member)
             db.session.commit()
             
-            flash(f"Successfully unassigned {employee_name} from {project_name}", "success")
+            flash(f"Successfully unassigned {employee.full_name if employee else employee_id} from {project.name if project else 'Unknown Project'}", "success")
         else:
             flash("Project assignment not found", "warning")
     
@@ -606,11 +462,8 @@ def unassign_employee_from_project(employee_id, project_id):
         db.session.rollback()
         flash(f"Error unassigning from project: {str(e)}", "danger")
     
-    # Redirect back to employee detail page
     return redirect(url_for('view_employee', employee_id=employee_id))
-# ======================================================
-# VIEW SINGLE EMPLOYEE DETAILS (Optional enhancement)
-# ======================================================
+
 
 @app.route("/employee/<string:employee_id>")
 def view_employee(employee_id):
@@ -620,24 +473,20 @@ def view_employee(employee_id):
     
     employee = Employee.query.filter_by(employee_id=employee_id).first_or_404()
     
-    # Get projects this employee is working on
+    # Get projects
     project_memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
     projects = []
     
     for pm in project_memberships:
         project = Project.query.get(pm.project_id)
         if project:
-            # Get team members for this project
-            team_members = ProjectMember.query.filter_by(project_id=project.id).all()
-            team_size = len(team_members)
-            
+            team_size = ProjectMember.query.filter_by(project_id=project.id).count()
             projects.append({
                 "project": project,
                 "role": pm.role,
                 "team_size": team_size
             })
     
-    # Calculate detailed metrics
     metrics = calculate_performance_metrics(employee)
     
     return render_template(
@@ -648,25 +497,18 @@ def view_employee(employee_id):
         performance_trend=get_performance_trend(employee.performance_score)
     )
 
-# ======================================================
-# EMPLOYEE PERFORMANCE ROUTES
-# ======================================================
 
 @app.route("/performance")
 def performance_dashboard():
-    """View all employees' individual performance scores"""
+    """View all employees' performance scores"""
     if "user" not in session:
         return redirect("/login")
     
-    # Get all employees with their performance data
     employees = Employee.query.all()
-    
     performance_data = []
+    
     for emp in employees:
-        # Get project count
         project_count = ProjectMember.query.filter_by(employee_id=emp.employee_id).count()
-        
-        # Calculate individual metrics
         metrics = calculate_performance_metrics(emp)
         
         performance_data.append({
@@ -680,16 +522,12 @@ def performance_dashboard():
             "trend": get_performance_trend(emp.performance_score)
         })
     
-    # Sort by performance score (highest first)
     performance_data.sort(key=lambda x: x['performance_score'] or 0, reverse=True)
-    
-    # Calculate overall average
-    avg_performance = get_average_performance()
     
     return render_template(
         "performance.html",
         employees=performance_data,
-        avg_performance=avg_performance,
+        avg_performance=get_average_performance(),
         total_employees=len(employees)
     )
 
@@ -702,15 +540,12 @@ def performance_dashboard():
 def projects():
     all_projects = Project.query.all()
     all_employees = Employee.query.all()
-    
     projects_data = []
     
     for project in all_projects:
-        # Get assigned members for this project
         assigned_members_query = ProjectMember.query.filter_by(project_id=project.id).all()
         assigned_employee_ids = [m.employee_id for m in assigned_members_query]
         
-        # Get full employee details for assigned members
         assigned_members = []
         for member in assigned_members_query:
             emp = Employee.query.filter_by(employee_id=member.employee_id).first()
@@ -721,11 +556,7 @@ def projects():
                     "role": member.role
                 })
         
-        # Get available (unassigned) employees
-        available_employees = [
-            emp for emp in all_employees 
-            if emp.employee_id not in assigned_employee_ids
-        ]
+        available_employees = [emp for emp in all_employees if emp.employee_id not in assigned_employee_ids]
         
         projects_data.append({
             "id": project.id,
@@ -742,29 +573,22 @@ def projects():
 
 @app.route("/projects/create", methods=["POST"])
 def create_project():
-    # Get form data
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip()
     
-    # Validate project name
     if not name:
         flash("Project name is required", "danger")
         return redirect("/projects")
     
-    # Check if project with same name already exists
-    existing_project = Project.query.filter_by(name=name).first()
-    if existing_project:
+    if Project.query.filter_by(name=name).first():
         flash(f"Project with name '{name}' already exists", "warning")
         return redirect("/projects")
     
     # Generate unique project code
     project_code = "PROJ" + uuid.uuid4().hex[:5].upper()
-    
-    # Ensure project code is unique
     while Project.query.filter_by(project_code=project_code).first():
         project_code = "PROJ" + uuid.uuid4().hex[:5].upper()
     
-    # Create new project
     try:
         new_project = Project(
             project_code=project_code,
@@ -789,11 +613,7 @@ def assign_members(project_id):
     employee_ids = request.form.getlist("employee_ids")
 
     for emp_id in employee_ids:
-        # Check if this employee is already assigned to this project
-        existing = ProjectMember.query.filter_by(
-            project_id=project_id,
-            employee_id=emp_id
-        ).first()
+        existing = ProjectMember.query.filter_by(project_id=project_id, employee_id=emp_id).first()
         
         if not existing:
             db.session.add(ProjectMember(
@@ -811,10 +631,7 @@ def assign_members(project_id):
 
 @app.route("/projects/<int:project_id>/remove/<employee_id>", methods=["POST"])
 def remove_member(project_id, employee_id):
-    member = ProjectMember.query.filter_by(
-        project_id=project_id,
-        employee_id=employee_id
-    ).first()
+    member = ProjectMember.query.filter_by(project_id=project_id, employee_id=employee_id).first()
     
     if member:
         db.session.delete(member)
@@ -836,9 +653,8 @@ def delete_project(project_id):
     return redirect("/projects")
 
 
-
 # ======================================================
-# API ENDPOINTS (FOR TESTING) - Vishnu
+# API ENDPOINTS
 # ======================================================
 
 @app.route("/api/projects/assignments")
@@ -869,21 +685,11 @@ def project_assignments_api():
     return jsonify({"projects": response})
 
 
-# ======================================================
-# PERFORMANCE API ENDPOINTS
-# ======================================================
-
 @app.route("/api/performance/mock-realtime", methods=["GET", "POST"])
 def mock_realtime_performance():
-    """
-    Mock API that simulates real-time performance data from employee app
-    
-    GET: Returns current mock performance data for all employees
-    POST: Simulates receiving real-time updates
-    """
+    """Mock API that simulates real-time performance data from employee app"""
     
     if request.method == "GET":
-        # Generate mock real-time performance data
         employees = Employee.query.all()
         mock_data = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -892,7 +698,6 @@ def mock_realtime_performance():
         }
         
         for emp in employees:
-            # Simulate real-time metrics
             performance_data = {
                 "employee_id": emp.employee_id,
                 "full_name": emp.full_name,
@@ -943,7 +748,6 @@ def mock_realtime_performance():
                 "alerts": []
             }
             
-            # Add alerts for low performance
             if performance_data["performance_score"] < 70:
                 performance_data["alerts"].append({
                     "type": "warning",
@@ -959,20 +763,17 @@ def mock_realtime_performance():
         
         return jsonify(mock_data), 200
     
-    elif request.method == "POST":
-        # Simulate receiving performance update from employee app
+    else:  # POST
         data = request.get_json()
         
         if not data:
             return jsonify({"error": "No data provided"}), 400
         
-        # Validate and process the mock data
         employee = Employee.query.filter_by(employee_id=data.get("employee_id")).first()
         
         if not employee:
             return jsonify({"error": "Employee not found"}), 404
         
-        # Update performance score
         employee.performance_score = data.get("performance_score", 75.0)
         db.session.commit()
         
@@ -984,56 +785,6 @@ def mock_realtime_performance():
             "timestamp": datetime.utcnow().isoformat()
         }), 200
 
-
-# ======================================================
-# HELPER FUNCTIONS FOR DATA PREPARATION
-# ======================================================
-
-def calculate_age(dob):
-    """Calculate age from date of birth"""
-    if not dob:
-        return None
-    today = datetime.utcnow().date()
-    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-
-
-def calculate_profile_completeness(employee):
-    """Calculate profile completeness percentage"""
-    fields = [
-        employee.full_name,
-        employee.email,
-        employee.dob,
-        employee.phone,
-        employee.department,
-        employee.job_title,
-        employee.total_exp,
-        employee.skills,
-        employee.resume_path,
-        employee.profile_pic
-    ]
-    
-    filled_fields = sum(1 for field in fields if field)
-    return round((filled_fields / len(fields)) * 100, 1)
-
-
-def calculate_data_quality(employees):
-    """Calculate overall data quality score"""
-    if not employees:
-        return 0
-    
-    total_completeness = sum(calculate_profile_completeness(emp) for emp in employees)
-    avg_completeness = total_completeness / len(employees)
-    
-    # Check for data consistency
-    employees_with_skills = sum(1 for emp in employees if emp.skills)
-    employees_with_projects = sum(1 for emp in employees if ProjectMember.query.filter_by(employee_id=emp.employee_id).first())
-    
-    consistency_score = (
-        (employees_with_skills / len(employees)) * 50 +
-        (employees_with_projects / len(employees)) * 50
-    )
-    
-    return round((avg_completeness + consistency_score) / 2, 1)
 
 # ======================================================
 # DB INIT
