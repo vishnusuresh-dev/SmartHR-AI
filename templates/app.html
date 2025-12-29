@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartHR AI Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 </head>
 <body>
@@ -82,10 +83,10 @@
                 AI-Powered Quick Actions
             </h3>
             <div class="actions-grid">
-                <div class="action-card" onclick="openChat()">
-                    <div class="action-icon gradient-purple-pink">💬</div>
-                    <h4>AI Assistant</h4>
-                    <p>Ask anything about your team</p>
+                <div class="action-card" onclick="openAIAssistant()">
+                <div class="action-icon gradient-purple-pink">💬</div>
+                 <h4>AI Assistant</h4>
+                 <p>Ask anything about your team</p>
                 </div>
                 <div class="action-card">
                     <div class="action-icon gradient-blue-cyan">📄</div>
@@ -116,38 +117,312 @@
         </div>
 
   
-    <!-- AI Chat Modal -->
-    <div class="modal" id="chatModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div class="modal-logo">
-                    <div class="modal-icon">💬</div>
-                    <div class="modal-title">
-                        <h3>AI HR Assistant</h3>
-                        <p>Powered by Llama 3.1 + RAG</p>
+<!-- AI Assistant Modal -->
+<div class="ai-modal" id="aiModal">
+    <div class="ai-chat-container">
+        <!-- Header -->
+        <div class="ai-chat-header">
+            <div>
+                <h3>
+                    <i class="fas fa-robot"></i>
+                    AI HR Assistant
+                </h3>
+                <div class="ai-status">
+                    <div class="status-dot"></div>
+                    <span>Online & Ready</span>
+                </div>
+            </div>
+            <button class="ai-close-btn" onclick="closeAIAssistant()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Chat Body -->
+        <div class="ai-chat-body" id="aiChatBody">
+            <!-- Welcome Screen -->
+            <div class="ai-welcome-screen" id="welcomeScreen">
+                <div class="ai-welcome-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <h4>Hello! I'm your AI HR Assistant 👋</h4>
+                <p>Ask me anything about your employees, performance metrics, projects, or skills.</p>
+                
+                <div class="suggestion-chips" id="suggestionChips">
+                    <div class="suggestion-chip" onclick="sendSuggestion(this)">
+                        Who are the top performers?
+                    </div>
+                    <div class="suggestion-chip" onclick="sendSuggestion(this)">
+                        Show employees with Python skills
+                    </div>
+                    <div class="suggestion-chip" onclick="sendSuggestion(this)">
+                        Which projects are active?
+                    </div>
+                    <div class="suggestion-chip" onclick="sendSuggestion(this)">
+                        Average performance by department
+                    </div>
+                    <div class="suggestion-chip" onclick="sendSuggestion(this)">
+                        Who needs performance improvement?
+                    </div>
+                    <div class="suggestion-chip" onclick="sendSuggestion(this)">
+                        List all Engineering employees
                     </div>
                 </div>
-                <button class="close-btn" onclick="closeChat()">×</button>
             </div>
-            <div class="modal-body">
-                <div class="chat-welcome">
-                    <p>👋 Hi! I'm your AI HR assistant. Ask me anything like:</p>
-                    <ul>
-                        <li>• "Who on my team knows React and is available?"</li>
-                        <li>• "Show me employees who need leadership training"</li>
-                        <li>• "Find best candidates for Project Phoenix"</li>
-                    </ul>
-                </div>
+
+            <!-- Messages Container -->
+            <div id="messagesContainer" style="display: none;"></div>
+        </div>
+
+        <!-- Chat Footer -->
+        <div class="ai-chat-footer">
+            <div class="ai-input-wrapper">
+                <input 
+                    type="text" 
+                    class="ai-input" 
+                    id="aiInput"
+                    placeholder="Ask me anything about your employees..."
+                    onkeypress="handleKeyPress(event)"
+                >
+                <button class="ai-send-btn" id="sendBtn" onclick="sendMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
             </div>
-            <div class="modal-footer">
-                <div class="chat-input-container">
-                    <input type="text" class="chat-input" placeholder="Ask anything about your team...">
-                    <button class="send-btn">Send</button>
-                </div>
+            <div class="ai-actions">
+                <button class="ai-action-btn" onclick="clearChat()">
+                    <i class="fas fa-trash"></i> Clear Chat
+                </button>
+                <button class="ai-action-btn" onclick="loadSuggestions()">
+                    <i class="fas fa-lightbulb"></i> Suggestions
+                </button>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="static/script.js"></script>
+<!-- Add this JavaScript before the closing </body> tag -->
+<script>
+    let sessionId = 'session_' + Date.now();
+    let isWaitingForResponse = false;
+
+    // Open AI Assistant Modal
+    function openAIAssistant() {
+        document.getElementById('aiModal').classList.add('active');
+        document.getElementById('aiInput').focus();
+    }
+
+    // Close AI Assistant Modal
+    function closeAIAssistant() {
+        document.getElementById('aiModal').classList.remove('active');
+    }
+
+    // Handle Enter key press
+    function handleKeyPress(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+        }
+    }
+
+    // Send suggestion chip message
+    function sendSuggestion(element) {
+        const message = element.textContent.trim();
+        document.getElementById('aiInput').value = message;
+        sendMessage();
+    }
+
+    // Send message to AI
+    async function sendMessage() {
+        const input = document.getElementById('aiInput');
+        const message = input.value.trim();
+        
+        if (!message || isWaitingForResponse) return;
+        
+        // Hide welcome screen, show messages
+        document.getElementById('welcomeScreen').style.display = 'none';
+        document.getElementById('messagesContainer').style.display = 'block';
+        
+        // Add user message
+        addMessage(message, 'user');
+        input.value = '';
+        
+        // Disable input while waiting
+        isWaitingForResponse = true;
+        document.getElementById('sendBtn').disabled = true;
+        input.disabled = true;
+        
+        // Show typing indicator
+        showTypingIndicator();
+        
+        try {
+            // Call API
+            const response = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: sessionId
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Remove typing indicator
+            removeTypingIndicator();
+            
+            if (data.success) {
+                addMessage(data.message, 'assistant');
+            } else {
+                addMessage('Sorry, I encountered an error: ' + data.error, 'assistant', true);
+            }
+            
+        } catch (error) {
+            removeTypingIndicator();
+            addMessage('Sorry, I could not connect to the AI service. Please try again.', 'assistant', true);
+            console.error('Error:', error);
+        } finally {
+            // Re-enable input
+            isWaitingForResponse = false;
+            document.getElementById('sendBtn').disabled = false;
+            input.disabled = false;
+            input.focus();
+        }
+    }
+
+    // Add message to chat
+    function addMessage(text, sender, isError = false) {
+        const container = document.getElementById('messagesContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `ai-message ${sender}`;
+        
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        if (sender === 'assistant') {
+            messageDiv.innerHTML = `
+                <div class="ai-message-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="ai-message-bubble ${isError ? 'error' : ''}">
+                    <div class="ai-message-content">${formatMessage(text)}</div>
+                    <div class="ai-message-time">${time}</div>
+                </div>
+            `;
+        } else {
+            messageDiv.innerHTML = `
+                <div class="ai-message-bubble">
+                    <div class="ai-message-content">${text}</div>
+                    <div class="ai-message-time">${time}</div>
+                </div>
+                <div class="ai-message-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+            `;
+        }
+        
+        container.appendChild(messageDiv);
+        scrollToBottom();
+    }
+
+    // Format message (convert markdown-like syntax)
+    function formatMessage(text) {
+        // Convert **bold** to <strong>
+        text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Convert newlines to <br>
+        text = text.replace(/\n/g, '<br>');
+        
+        // Convert bullet points
+        text = text.replace(/^- (.+)$/gm, '• $1');
+        
+        return text;
+    }
+
+    // Show typing indicator
+    function showTypingIndicator() {
+        const container = document.getElementById('messagesContainer');
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'ai-message assistant';
+        typingDiv.id = 'typingIndicator';
+        typingDiv.innerHTML = `
+            <div class="ai-message-avatar">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="ai-message-bubble">
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        `;
+        container.appendChild(typingDiv);
+        scrollToBottom();
+    }
+
+    // Remove typing indicator
+    function removeTypingIndicator() {
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+
+    // Scroll to bottom of chat
+    function scrollToBottom() {
+        const chatBody = document.getElementById('aiChatBody');
+        chatBody.scrollTop = chatBody.scrollHeight;
+    }
+
+    // Clear chat history
+    async function clearChat() {
+        if (confirm('Are you sure you want to clear the chat history?')) {
+            try {
+                await fetch('/api/ai/reset', { method: 'POST' });
+                document.getElementById('messagesContainer').innerHTML = '';
+                document.getElementById('messagesContainer').style.display = 'none';
+                document.getElementById('welcomeScreen').style.display = 'flex';
+                sessionId = 'session_' + Date.now();
+            } catch (error) {
+                console.error('Error clearing chat:', error);
+            }
+        }
+    }
+
+    // Load new suggestions
+    async function loadSuggestions() {
+        try {
+            const response = await fetch('/api/ai/suggestions');
+            const data = await response.json();
+            
+            const chipsContainer = document.getElementById('suggestionChips');
+            chipsContainer.innerHTML = '';
+            
+            data.suggestions.slice(0, 6).forEach(suggestion => {
+                const chip = document.createElement('div');
+                chip.className = 'suggestion-chip';
+                chip.textContent = suggestion;
+                chip.onclick = function() { sendSuggestion(this); };
+                chipsContainer.appendChild(chip);
+            });
+        } catch (error) {
+            console.error('Error loading suggestions:', error);
+        }
+    }
+
+    // Close modal on outside click
+    document.getElementById('aiModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeAIAssistant();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('aiModal').classList.contains('active')) {
+            closeAIAssistant();
+        }
+    });
+</script>
 </body>
 </html>
