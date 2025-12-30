@@ -62,9 +62,18 @@
                 <p class="stat-label">Avg Performance</p>
                 <p class="stat-value">{{ avg_performance }}%</p>
                 <!-- Add this in the header-actions section or as a new button -->
-                <a href="{{ url_for('performance_dashboard') }}">
-                 <button class="user-btn">Performance</button>
-                </a>
+                <!-- Replace existing performance link -->
+                <li class="nav-item">
+                    <a class="nav-link" href="/performance">
+                        <i class="fas fa-star"></i> View Performance
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/performance/manage">
+                        <i class="fas fa-edit"></i> Manage Metrics
+                    </a>
+                </li>
+                
             </div>
             <div class="stat-card">
                 <div class="stat-header">
