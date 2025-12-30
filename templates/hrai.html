@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI HR Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(to bottom right, #f8f9fa, #e9ecef);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: linear-gradient(to right, #6366f1, #ec4899);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        .header p {
+            margin: 5px 0 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .chat-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .welcome {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .welcome-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .welcome h2 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .welcome p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .quick-questions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .quick-btn {
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            text-align: left;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .quick-btn:hover {
+            background: #f5f5f5;
+            border-color: #6366f1;
+            transform: translateY(-2px);
+        }
+        
+        .message {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        
+        .message.user {
+            justify-content: flex-end;
+        }
+        
+        .message-bubble {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+        
+        .message.user .message-bubble {
+            background: linear-gradient(to right, #6366f1, #ec4899);
+            color: white;
+        }
+        
+        .message.ai .message-bubble {
+            background: #f3f4f6;
+            color: #1f2937;
+        }
+        
+        .typing {
+            display: flex;
+            gap: 5px;
+            padding: 12px;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+            animation: bounce 1s infinite;
+        }
+        
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        .input-area {
+            padding: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-field {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .input-field:focus {
+            border-color: #6366f1;
+        }
+        
+        .send-btn {
+            padding: 12px 24px;
+            background: linear-gradient(to right, #6366f1, #ec4899);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💬 AI HR Assistant</h1>
+            <p>Ask me anything about employees, projects, and team performance</p>
+        </div>
+        
+        <div class="chat-area" id="chatArea">
+            <div class="welcome" id="welcome">
+                <div class="welcome-icon">🤖</div>
+                <h2>Welcome to AI HR Assistant!</h2>
+                <p>I can help you with employee details, project information, team analytics, and more</p>
+                
+                <div class="quick-questions">
+                    <button class="quick-btn" onclick="askQuestion('Who are my top performers?')">
+                        🏆 Top performers
+                    </button>
+                    <button class="quick-btn" onclick="askQuestion('Show me all employee details')">
+                        👥 All employee details
+                    </button>
+                    <button class="quick-btn" onclick="askQuestion('How many active projects?')">
+                        📊 Active projects
+                    </button>
+                    <button class="quick-btn" onclick="askQuestion('Who is available for new work?')">
+                        ✅ Available employees
+                    </button>
+                    <button class="quick-btn" onclick="askQuestion('Show employees with alerts')">
+                        ⚠️ Employees with issues
+                    </button>
+                    <button class="quick-btn" onclick="askQuestion('Tell me about Sooraj')">
+                        👤 Employee profile
+                    </button>
+                </div>
+            </div>
+            
+            <div id="messages"></div>
+            <div id="typing" class="typing" style="display: none;">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <div class="input-container">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    class="input-field" 
+                    placeholder="Ask about employees, projects, performance metrics..."
+                    onkeypress="if(event.key==='Enter') sendMessage()"
+                >
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const employeeData = {
+            "data": [
+                {
+                    "employee_id": "EMP33D5FE",
+                    "full_name": "Vishnu",
+                    "department": "Engineering",
+                    "role": "Senior Developer",
+                    "metrics": {
+                        "attendance": { "score": 86.0, "days_present": 22, "days_total": 22, "late_arrivals": 0 },
+                        "collaboration": { "score": 91.3, "communication_rating": 3.6, "peer_reviews": 8, "team_contributions": 11 },
+                        "productivity": { "score": 70.9, "commits": 87, "lines_of_code": 1254, "story_points": 22 },
+                        "quality": { "score": 78.5, "bug_rate": 1.79, "review_rating": 4.9, "rework_required": 0.8 },
+                        "task_completion": { "score": 94.1, "tasks_assigned": 38, "tasks_completed": 38, "on_time_completion": 87.3 },
+                        "punctuality": { "score": 88.0, "deadline_adherence": 97.7, "meeting_attendance": 92.0 }
+                    },
+                    "performance_score": 86.4,
+                    "projects": { "active": 3, "completed_this_month": 2, "project_names": ["Mobile App Redesign", "API Integration", "Database Migration"] },
+                    "status": "active",
+                    "alerts": []
+                },
+                {
+                    "employee_id": "EMP2AB5DA",
+                    "full_name": "Sooraj",
+                    "department": "Engineering",
+                    "role": "Lead Developer",
+                    "metrics": {
+                        "attendance": { "score": 86.2, "days_present": 22, "days_total": 22, "late_arrivals": 3 },
+                        "collaboration": { "score": 95.0, "communication_rating": 4.2, "peer_reviews": 6, "team_contributions": 27 },
+                        "productivity": { "score": 75.4, "commits": 79, "lines_of_code": 720, "story_points": 32 },
+                        "quality": { "score": 91.8, "bug_rate": 3.22, "review_rating": 4.1, "rework_required": 9.9 },
+                        "task_completion": { "score": 93.3, "tasks_assigned": 33, "tasks_completed": 36, "on_time_completion": 93.6 },
+                        "punctuality": { "score": 87.1, "deadline_adherence": 93.1, "meeting_attendance": 96.4 }
+                    },
+                    "performance_score": 95.1,
+                    "projects": { "active": 2, "completed_this_month": 2, "project_names": ["Cloud Migration", "Security Audit"] },
+                    "status": "active",
+                    "alerts": []
+                },
+                {
+                    "employee_id": "EMPA13DCD",
+                    "full_name": "Bhagyalekshmi B S",
+                    "department": "Engineering",
+                    "role": "Full Stack Developer",
+                    "metrics": {
+                        "attendance": { "score": 95.3, "days_present": 22, "days_total": 22, "late_arrivals": 0 },
+                        "collaboration": { "score": 86.8, "communication_rating": 4.6, "peer_reviews": 6, "team_contributions": 20 },
+                        "productivity": { "score": 79.5, "commits": 88, "lines_of_code": 1198, "story_points": 15 },
+                        "quality": { "score": 87.7, "bug_rate": 0.34, "review_rating": 4.5, "rework_required": 3.6 },
+                        "task_completion": { "score": 93.8, "tasks_assigned": 37, "tasks_completed": 40, "on_time_completion": 90.2 },
+                        "punctuality": { "score": 87.0, "deadline_adherence": 91.8, "meeting_attendance": 98.6 }
+                    },
+                    "performance_score": 84.8,
+                    "projects": { "active": 3, "completed_this_month": 2, "project_names": ["Customer Portal", "Payment Gateway", "Analytics Dashboard"] },
+                    "status": "active",
+                    "alerts": []
+                },
+                {
+                    "employee_id": "EMPB083A4",
+                    "full_name": "Sudhi",
+                    "department": "Engineering",
+                    "role": "Junior Developer",
+                    "metrics": {
+                        "attendance": { "score": 89.4, "days_present": 22, "days_total": 22, "late_arrivals": 0 },
+                        "collaboration": { "score": 78.4, "communication_rating": 4.3, "peer_reviews": 6, "team_contributions": 11 },
+                        "productivity": { "score": 80.8, "commits": 22, "lines_of_code": 1443, "story_points": 16 },
+                        "quality": { "score": 78.2, "bug_rate": 1.71, "review_rating": 4.9, "rework_required": 9.9 },
+                        "task_completion": { "score": 87.3, "tasks_assigned": 32, "tasks_completed": 44, "on_time_completion": 88.7 },
+                        "punctuality": { "score": 88.8, "deadline_adherence": 86.7, "meeting_attendance": 98.0 }
+                    },
+                    "performance_score": 67.8,
+                    "projects": { "active": 1, "completed_this_month": 0, "project_names": ["Bug Fixes"] },
+                    "status": "on_leave",
+                    "alerts": [{ "message": "Performance below threshold", "type": "warning" }]
+                }
+            ]
+        };
+
+        function analyzeQuery(query) {
+            const q = query.toLowerCase();
+            
+            // Top performers
+            if (q.includes('top') || q.includes('best performer')) {
+                const sorted = [...employeeData.data].sort((a, b) => b.performance_score - a.performance_score);
+                let response = `🏆 TOP PERFORMERS\n\n`;
+                sorted.slice(0, 3).forEach((e, i) => {
+                    response += `${i + 1}. ${e.full_name} (${e.role})\n`;
+                    response += `   Overall Performance: ${e.performance_score}%\n`;
+                    response += `   Department: ${e.department}\n`;
+                    response += `   Active Projects: ${e.projects.active}\n`;
+                    response += `   Key Strengths: Collaboration (${e.metrics.collaboration.score}%), Task Completion (${e.metrics.task_completion.score}%)\n\n`;
+                });
+                return response;
+            }
+            
+            // All employee details
+            if (q.includes('all employee') || q.includes('list all') || q.includes('show all')) {
+                let response = `👥 ALL EMPLOYEES (${employeeData.data.length})\n\n`;
+                employeeData.data.forEach((e, i) => {
+                    response += `${i + 1}. ${e.full_name} (${e.employee_id})\n`;
+                    response += `   Role: ${e.role}\n`;
+                    response += `   Department: ${e.department}\n`;
+                    response += `   Status: ${e.status}\n`;
+                    response += `   Performance: ${e.performance_score}%\n`;
+                    response += `   Active Projects: ${e.projects.active} (${e.projects.project_names.join(', ')})\n`;
+                    response += `   Completed This Month: ${e.projects.completed_this_month}\n\n`;
+                });
+                return response;
+            }
+            
+            // Project details
+            if (q.includes('project') && !q.includes('who')) {
+                const totalProjects = employeeData.data.reduce((sum, e) => sum + e.projects.active, 0);
+                const totalCompleted = employeeData.data.reduce((sum, e) => sum + e.projects.completed_this_month, 0);
+                let allProjects = new Set();
+                employeeData.data.forEach(e => e.projects.project_names.forEach(p => allProjects.add(p)));
+                
+                let response = `📊 PROJECT OVERVIEW\n\n`;
+                response += `Total Active Projects: ${totalProjects}\n`;
+                response += `Completed This Month: ${totalCompleted}\n`;
+                response += `Unique Projects: ${allProjects.size}\n\n`;
+                response += `📋 PROJECT LIST:\n`;
+                Array.from(allProjects).forEach((project, i) => {
+                    const assignedTo = employeeData.data.filter(e => e.projects.project_names.includes(project));
+                    response += `${i + 1}. ${project}\n   Assigned to: ${assignedTo.map(e => e.full_name).join(', ')}\n\n`;
+                });
+                return response;
+            }
+            
+            // Available employees
+            if (q.includes('available') || q.includes('capacity') || q.includes('free')) {
+                const available = employeeData.data.filter(e => e.status === 'active' && e.projects.active <= 2);
+                let response = `✅ AVAILABLE EMPLOYEES FOR NEW WORK\n\n`;
+                available.forEach((e, i) => {
+                    response += `${i + 1}. ${e.full_name} (${e.role})\n`;
+                    response += `   Current Workload: ${e.projects.active} active projects\n`;
+                    response += `   Performance: ${e.performance_score}%\n`;
+                    response += `   Current Projects: ${e.projects.project_names.join(', ')}\n`;
+                    response += `   Best Skills: ${Object.entries(e.metrics).sort((a,b) => b[1].score - a[1].score).slice(0,2).map(([k]) => k).join(', ')}\n\n`;
+                });
+                response += `💡 Recommendation: ${available[0]?.full_name} has the best availability and performance rating!`;
+                return response;
+            }
+            
+            // Alerts and problems
+            if (q.includes('alert') || q.includes('problem') || q.includes('issue') || q.includes('concern')) {
+                const problems = employeeData.data.filter(e => e.performance_score < 70 || e.alerts.length > 0);
+                if (problems.length === 0) return '✅ Great news! No employees with performance issues or alerts.';
+                
+                let response = `⚠️ EMPLOYEES NEEDING ATTENTION\n\n`;
+                problems.forEach((e, i) => {
+                    response += `${i + 1}. ${e.full_name} (${e.role})\n`;
+                    response += `   Status: ${e.status}\n`;
+                    response += `   Performance: ${e.performance_score}%\n`;
+                    if (e.alerts.length > 0) response += `   Alert: ${e.alerts[0].message}\n`;
+                    const weakAreas = Object.entries(e.metrics).filter(([k,v]) => v.score < 75).map(([k]) => k);
+                    if (weakAreas.length > 0) response += `   Areas to Improve: ${weakAreas.join(', ')}\n`;
+                    response += `\n`;
+                });
+                return response;
+            }
+            
+            // Team overview/summary
+            if (q.includes('overview') || q.includes('summary') || q.includes('stats')) {
+                const avg = (employeeData.data.reduce((s, e) => s + e.performance_score, 0) / employeeData.data.length).toFixed(1);
+                const totalProjects = employeeData.data.reduce((sum, e) => sum + e.projects.active, 0);
+                
+                let response = `📈 TEAM OVERVIEW & STATISTICS\n\n`;
+                response += `👥 WORKFORCE:\n`;
+                response += `Total Employees: ${employeeData.data.length}\n`;
+                response += `Active: ${employeeData.data.filter(e => e.status === 'active').length}\n`;
+                response += `On Leave: ${employeeData.data.filter(e => e.status === 'on_leave').length}\n\n`;
+                
+                response += `📊 PERFORMANCE:\n`;
+                response += `Average Performance: ${avg}%\n`;
+                response += `High Performers (>85%): ${employeeData.data.filter(e => e.performance_score > 85).length}\n`;
+                response += `Good Performers (70-85%): ${employeeData.data.filter(e => e.performance_score >= 70 && e.performance_score <= 85).length}\n`;
+                response += `Need Attention (<70%): ${employeeData.data.filter(e => e.performance_score < 70).length}\n\n`;
+                
+                response += `💼 PROJECTS:\n`;
+                response += `Total Active Projects: ${totalProjects}\n`;
+                response += `Avg Projects per Employee: ${(totalProjects / employeeData.data.length).toFixed(1)}\n\n`;
+                
+                response += `⚠️ ALERTS:\n`;
+                response += `Employees with Alerts: ${employeeData.data.filter(e => e.alerts.length > 0).length}`;
+                
+                return response;
+            }
+            
+            // Specific employee details
+            const emp = employeeData.data.find(e => q.includes(e.full_name.toLowerCase()));
+            if (emp) {
+                let response = `👤 EMPLOYEE PROFILE: ${emp.full_name}\n\n`;
+                response += `📋 BASIC INFO:\n`;
+                response += `Employee ID: ${emp.employee_id}\n`;
+                response += `Role: ${emp.role}\n`;
+                response += `Department: ${emp.department}\n`;
+                response += `Status: ${emp.status}\n`;
+                response += `Overall Performance: ${emp.performance_score}%\n\n`;
+                
+                response += `💼 PROJECT INFORMATION:\n`;
+                response += `Active Projects: ${emp.projects.active}\n`;
+                response += `Projects: ${emp.projects.project_names.join(', ')}\n`;
+                response += `Completed This Month: ${emp.projects.completed_this_month}\n\n`;
+                
+                response += `📊 DETAILED METRICS:\n`;
+                response += `• Attendance: ${emp.metrics.attendance.score}% (${emp.metrics.attendance.days_present}/${emp.metrics.attendance.days_total} days, ${emp.metrics.attendance.late_arrivals} late)\n`;
+                response += `• Collaboration: ${emp.metrics.collaboration.score}% (${emp.metrics.collaboration.team_contributions} contributions, ${emp.metrics.collaboration.peer_reviews} peer reviews)\n`;
+                response += `• Productivity: ${emp.metrics.productivity.score}% (${emp.metrics.productivity.commits} commits, ${emp.metrics.productivity.story_points} story points)\n`;
+                response += `• Quality: ${emp.metrics.quality.score}% (${emp.metrics.quality.bug_rate}% bug rate, ${emp.metrics.quality.review_rating}/5 rating)\n`;
+                response += `• Task Completion: ${emp.metrics.task_completion.score}% (${emp.metrics.task_completion.tasks_completed}/${emp.metrics.task_completion.tasks_assigned} tasks, ${emp.metrics.task_completion.on_time_completion}% on time)\n`;
+                response += `• Punctuality: ${emp.metrics.punctuality.score}% (${emp.metrics.punctuality.deadline_adherence}% deadline adherence)\n\n`;
+                
+                if (emp.alerts.length > 0) {
+                    response += `⚠️ ALERTS:\n${emp.alerts[0].message}\n\n`;
+                }
+                
+                const strengths = Object.entries(emp.metrics).filter(([k,v]) => v.score > 85).map(([k]) => k);
+                const improvements = Object.entries(emp.metrics).filter(([k,v]) => v.score < 75).map(([k]) => k);
+                
+                if (strengths.length > 0) response += `💪 Strengths: ${strengths.join(', ')}\n`;
+                if (improvements.length > 0) response += `📈 Areas for Improvement: ${improvements.join(', ')}`;
+                
+                return response;
+            }
+            
+            // Collaboration/team players
+            if (q.includes('collaborat') || q.includes('team player')) {
+                const sorted = [...employeeData.data].sort((a, b) => b.metrics.collaboration.score - a.metrics.collaboration.score);
+                let response = `🤝 BEST COLLABORATORS\n\n`;
+                sorted.slice(0, 3).forEach((e, i) => {
+                    response += `${i + 1}. ${e.full_name}\n`;
+                    response += `   Collaboration Score: ${e.metrics.collaboration.score}%\n`;
+                    response += `   Team Contributions: ${e.metrics.collaboration.team_contributions}\n`;
+                    response += `   Peer Reviews: ${e.metrics.collaboration.peer_reviews}\n`;
+                    response += `   Communication Rating: ${e.metrics.collaboration.communication_rating}/5\n\n`;
+                });
+                return response;
+            }
+            
+            // Default help
+            return `🤖 I'M YOUR AI HR ASSISTANT!\n\nI can help you with:\n\n👥 EMPLOYEE QUERIES:\n• "Show me all employee details"\n• "Tell me about [employee name]"\n• "Who are my top performers?"\n• "Who is available for new work?"\n\n📊 PROJECT QUERIES:\n• "How many active projects?"\n• "Show me all projects"\n• "Who is working on what?"\n\n📈 PERFORMANCE QUERIES:\n• "Give me team overview"\n• "Show employees with alerts"\n• "Who are the best collaborators?"\n\n💡 Try asking me anything about your team!`;
+        }
+
+        function addMessage(role, text) {
+            document.getElementById('welcome').style.display = 'none';
+            
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.textContent = text;
+            
+            messageDiv.appendChild(bubble);
+            messagesDiv.appendChild(messageDiv);
+            
+            const chatArea = document.getElementById('chatArea');
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function showTyping() {
+            document.getElementById('typing').style.display = 'flex';
+        }
+
+        function hideTyping() {
+            document.getElementById('typing').style.display = 'none';
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addMessage('user', message);
+            input.value = '';
+            
+            showTyping();
+            
+            setTimeout(() => {
+                hideTyping();
+                const response = analyzeQuery(message);
+                addMessage('ai', response);
+            }, 800);
+        }
+
+        function askQuestion(question) {
+            document.getElementById('messageInput').value = question;
+            sendMessage();
+        }
+    </script>
+</body>
+</html>
