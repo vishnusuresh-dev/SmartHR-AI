@@ -110,6 +110,130 @@ class ProjectMember(db.Model):
         db.UniqueConstraint('project_id', 'employee_id', name='unique_project_member'),
     )
 
+# ---------------------------
+# Performance Tracking Model
+# ---------------------------
+class PerformanceMetric(db.Model):
+    __tablename__ = "performance_metrics"
+
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.String(64), db.ForeignKey("employees.employee_id"), nullable=False)
+    
+    # Core metrics (0-100 scale)
+    attendance_score = db.Column(db.Float, default=85.0)
+    task_completion_score = db.Column(db.Float, default=80.0)
+    quality_score = db.Column(db.Float, default=85.0)
+    punctuality_score = db.Column(db.Float, default=90.0)
+    collaboration_score = db.Column(db.Float, default=85.0)
+    productivity_score = db.Column(db.Float, default=80.0)
+    
+    # Detailed attendance metrics
+    days_present = db.Column(db.Integer, default=20)
+    days_total = db.Column(db.Integer, default=22)
+    late_arrivals = db.Column(db.Integer, default=0)
+    
+    # Task completion metrics
+    tasks_completed = db.Column(db.Integer, default=30)
+    tasks_assigned = db.Column(db.Integer, default=35)
+    on_time_completion = db.Column(db.Float, default=90.0)
+    
+    # Quality metrics
+    bug_rate = db.Column(db.Float, default=2.0)
+    review_rating = db.Column(db.Float, default=4.0)
+    rework_required = db.Column(db.Float, default=5.0)
+    
+    # Punctuality metrics
+    meeting_attendance = db.Column(db.Float, default=95.0)
+    deadline_adherence = db.Column(db.Float, default=90.0)
+    
+    # Collaboration metrics
+    peer_reviews = db.Column(db.Integer, default=10)
+    team_contributions = db.Column(db.Integer, default=20)
+    communication_rating = db.Column(db.Float, default=4.0)
+    
+    # Productivity metrics
+    lines_of_code = db.Column(db.Integer, default=1000)
+    commits = db.Column(db.Integer, default=50)
+    story_points = db.Column(db.Integer, default=25)
+    
+    # Metadata
+    month = db.Column(db.String(7), nullable=False)  # Format: YYYY-MM
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
+    notes = db.Column(db.Text)
+    
+    # Unique constraint: one record per employee per month
+    __table_args__ = (
+        db.UniqueConstraint('employee_id', 'month', name='unique_employee_month'),
+    )
+    
+    def calculate_overall_score(self):
+        """Calculate weighted overall performance score"""
+        weights = {
+            'attendance': 0.20,
+            'task_completion': 0.25,
+            'quality': 0.20,
+            'punctuality': 0.15,
+            'collaboration': 0.10,
+            'productivity': 0.10
+        }
+        
+        score = (
+            self.attendance_score * weights['attendance'] +
+            self.task_completion_score * weights['task_completion'] +
+            self.quality_score * weights['quality'] +
+            self.punctuality_score * weights['punctuality'] +
+            self.collaboration_score * weights['collaboration'] +
+            self.productivity_score * weights['productivity']
+        )
+        
+        return round(score, 1)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        return {
+            "employee_id": self.employee_id,
+            "month": self.month,
+            "overall_score": self.calculate_overall_score(),
+            "metrics": {
+                "attendance": {
+                    "score": self.attendance_score,
+                    "days_present": self.days_present,
+                    "days_total": self.days_total,
+                    "late_arrivals": self.late_arrivals
+                },
+                "task_completion": {
+                    "score": self.task_completion_score,
+                    "tasks_completed": self.tasks_completed,
+                    "tasks_assigned": self.tasks_assigned,
+                    "on_time_completion": self.on_time_completion
+                },
+                "quality": {
+                    "score": self.quality_score,
+                    "bug_rate": self.bug_rate,
+                    "review_rating": self.review_rating,
+                    "rework_required": self.rework_required
+                },
+                "punctuality": {
+                    "score": self.punctuality_score,
+                    "meeting_attendance": self.meeting_attendance,
+                    "deadline_adherence": self.deadline_adherence
+                },
+                "collaboration": {
+                    "score": self.collaboration_score,
+                    "peer_reviews": self.peer_reviews,
+                    "team_contributions": self.team_contributions,
+                    "communication_rating": self.communication_rating
+                },
+                "productivity": {
+                    "score": self.productivity_score,
+                    "lines_of_code": self.lines_of_code,
+                    "commits": self.commits,
+                    "story_points": self.story_points
+                }
+            },
+            "last_updated": self.last_updated.isoformat(),
+            "notes": self.notes
+        }
 
 # ======================================================
 # HELPERS
@@ -157,8 +281,11 @@ def cleanup_orphaned_files():
     
     return deleted
 
+# Add these updated functions to your app.py
+# Replace the existing RAG helper functions section
+
 # ======================================================
-# RAG HELPER FUNCTIONS
+# ENHANCED RAG HELPER FUNCTIONS
 # ======================================================
 
 def get_retriever():
@@ -169,76 +296,163 @@ def get_retriever():
             persist_directory=CHROMA_DIR,
             embedding_function=embeddings,
         )
-        return vectordb.as_retriever(search_kwargs={"k": 5})
+        return vectordb.as_retriever(search_kwargs={"k": 7})  # Increased from 5 to 7
     except Exception as e:
         print(f"Error initializing retriever: {e}")
         return None
 
 
-def get_employee_context():
-    """Get current employee data as context for RAG"""
+def get_employee_context(limit=10):
+    """Get current employee data as context for RAG - more detailed version"""
     try:
-        employees = Employee.query.all()
+        employees = Employee.query.limit(limit).all()
         context_parts = []
+        current_month = datetime.utcnow().strftime("%Y-%m")
         
         for emp in employees:
-            # Get project count
-            project_count = ProjectMember.query.filter_by(employee_id=emp.employee_id).count()
+            # Get project count and names
+            project_memberships = ProjectMember.query.filter_by(employee_id=emp.employee_id).all()
+            project_names = []
+            for pm in project_memberships:
+                project = Project.query.get(pm.project_id)
+                if project:
+                    project_names.append(f"{project.name} ({pm.role})")
+            
+            # Get latest performance metric
+            metric = PerformanceMetric.query.filter_by(
+                employee_id=emp.employee_id,
+                month=current_month
+            ).first()
+            
+            performance_summary = ""
+            if metric:
+                performance_summary = f"""
+Performance Summary (Month: {metric.month}):
+  - Overall Score: {metric.calculate_overall_score()}/100
+  - Attendance: {metric.attendance_score}/100 ({metric.days_present}/{metric.days_total} days)
+  - Task Completion: {metric.task_completion_score}/100 ({metric.tasks_completed}/{metric.tasks_assigned} tasks)
+  - Quality: {metric.quality_score}/100
+  - Collaboration: {metric.collaboration_score}/100
+  - Productivity: {metric.productivity_score}/100"""
+            else:
+                performance_summary = f"Performance Score: {emp.performance_score}/100 (No detailed metrics available)"
             
             emp_info = f"""
 Employee: {emp.full_name} (ID: {emp.employee_id})
 Email: {emp.email}
 Department: {emp.department or 'Not specified'}
 Job Title: {emp.job_title or 'Not specified'}
-Performance Score: {emp.performance_score}/100
-Experience: {emp.total_exp} years
-Skills: {', '.join(emp.skills.keys()) if emp.skills else 'None listed'}
 Status: {emp.status}
 Manager: {emp.manager or 'Not assigned'}
-Active Projects: {project_count}
+Experience: {emp.total_exp or 0} years
+Skills: {', '.join(emp.skills.keys()) if emp.skills else 'None listed'}
+Active Projects ({len(project_memberships)}): {', '.join(project_names) if project_names else 'None'}
+{performance_summary}
 """
             context_parts.append(emp_info)
         
-        return "\n---\n".join(context_parts)
+        return "\n" + "="*50 + "\n".join(context_parts)
     except Exception as e:
         print(f"Error getting employee context: {e}")
         return ""
 
 
-def get_project_context():
+def get_project_context(limit=10):
     """Get current project data as context for RAG"""
     try:
-        projects = Project.query.all()
+        projects = Project.query.limit(limit).all()
         context_parts = []
         
         for proj in projects:
             members = ProjectMember.query.filter_by(project_id=proj.id).all()
             member_details = []
+            avg_performance = 0
             
             for m in members:
                 emp = Employee.query.filter_by(employee_id=m.employee_id).first()
                 if emp:
-                    member_details.append(f"{emp.full_name} ({m.role})")
+                    member_details.append(
+                        f"{emp.full_name} ({m.role}, Performance: {emp.performance_score}/100)"
+                    )
+                    avg_performance += emp.performance_score or 75.0
+            
+            team_avg = round(avg_performance / len(members), 1) if members else 0
             
             proj_info = f"""
 Project: {proj.name} (Code: {proj.project_code})
 Description: {proj.description or 'No description provided'}
 Status: {proj.status}
+Created: {proj.created_at.strftime('%Y-%m-%d')}
 Team Size: {len(member_details)}
+Team Average Performance: {team_avg}/100
 Team Members: {', '.join(member_details) if member_details else 'No members assigned yet'}
 """
             context_parts.append(proj_info)
         
-        return "\n---\n".join(context_parts)
+        return "\n" + "="*50 + "\n".join(context_parts)
     except Exception as e:
         print(f"Error getting project context: {e}")
         return ""
 
 
-def ask_rag_question(query: str):
-    """Process question using RAG with both vector DB and live database context"""
+def get_performance_statistics():
+    """Get overall performance statistics for context"""
     try:
-        # Get retriever for CSV/document data
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        
+        # Overall stats
+        total_employees = Employee.query.count()
+        avg_performance = get_average_performance()
+        
+        # Department-wise performance
+        dept_stats = db.session.query(
+            Employee.department,
+            db.func.avg(Employee.performance_score).label('avg_score'),
+            db.func.count(Employee.id).label('count')
+        ).group_by(Employee.department).all()
+        
+        dept_summary = []
+        for dept, avg, count in dept_stats:
+            dept_name = dept or "Unassigned"
+            dept_summary.append(f"{dept_name}: {round(avg or 0, 1)}/100 ({count} employees)")
+        
+        # Top and bottom performers
+        top_performers = Employee.query.order_by(
+            Employee.performance_score.desc()
+        ).limit(5).all()
+        
+        bottom_performers = Employee.query.order_by(
+            Employee.performance_score.asc()
+        ).limit(5).all()
+        
+        stats = f"""
+OVERALL PERFORMANCE STATISTICS
+==============================
+Total Employees: {total_employees}
+Company Average Performance: {avg_performance}/100
+Month: {current_month}
+
+DEPARTMENT-WISE PERFORMANCE:
+{chr(10).join(dept_summary)}
+
+TOP 5 PERFORMERS:
+{chr(10).join([f"  {i+1}. {emp.full_name} ({emp.employee_id}): {emp.performance_score}/100" for i, emp in enumerate(top_performers)])}
+
+EMPLOYEES NEEDING IMPROVEMENT:
+{chr(10).join([f"  - {emp.full_name} ({emp.employee_id}): {emp.performance_score}/100" for emp in bottom_performers if (emp.performance_score or 0) < 70])}
+"""
+        return stats
+    except Exception as e:
+        print(f"Error getting performance statistics: {e}")
+        return ""
+
+
+def ask_rag_question(query: str):
+    """
+    Enhanced RAG query processing with better context integration
+    """
+    try:
+        # Get retriever for vector DB data
         retriever = get_retriever()
         
         # Initialize LLM
@@ -249,47 +463,81 @@ def ask_rag_question(query: str):
         if retriever:
             try:
                 docs = retriever.invoke(query)
-                vector_context = "\n\n".join([d.page_content for d in docs]) if docs else ""
+                if docs:
+                    # Group by document type for better organization
+                    resume_docs = [d for d in docs if d.metadata.get('document_type') == 'resume']
+                    perf_docs = [d for d in docs if d.metadata.get('document_type') == 'performance_metrics']
+                    proj_docs = [d for d in docs if d.metadata.get('document_type') == 'project_assignment']
+                    
+                    vector_parts = []
+                    
+                    if resume_docs:
+                        vector_parts.append("RESUME DATA:\n" + "\n---\n".join([d.page_content for d in resume_docs[:2]]))
+                    
+                    if perf_docs:
+                        vector_parts.append("PERFORMANCE DATA:\n" + "\n---\n".join([d.page_content for d in perf_docs[:2]]))
+                    
+                    if proj_docs:
+                        vector_parts.append("PROJECT DATA:\n" + "\n---\n".join([d.page_content for d in proj_docs[:2]]))
+                    
+                    vector_context = "\n\n".join(vector_parts)
             except Exception as e:
                 print(f"Vector retrieval error: {e}")
-                vector_context = "Vector database not available."
+                vector_context = "Vector database retrieval failed."
         
-        # Get live database context
-        employee_context = get_employee_context()
-        project_context = get_project_context()
+        # Determine if we need live database context
+        query_lower = query.lower()
+        needs_employee_context = any(word in query_lower for word in [
+            'employee', 'staff', 'people', 'who', 'list', 'show me', 'find'
+        ])
+        needs_project_context = any(word in query_lower for word in [
+            'project', 'team', 'working on', 'assigned to'
+        ])
+        needs_stats = any(word in query_lower for word in [
+            'average', 'statistics', 'overall', 'company', 'department', 'top', 'best', 'worst'
+        ])
         
-        # Build system context
-        system_context = f"""
-=== HR KNOWLEDGE BASE ===
-{vector_context if vector_context else "General HR knowledge available"}
-
-=== CURRENT EMPLOYEE DATABASE ===
-Total Employees: {Employee.query.count()}
-{employee_context[:3000]}  # Limit to avoid token overflow
-
-=== CURRENT PROJECTS ===
-Total Projects: {Project.query.count()}
-{project_context[:2000]}
-"""
+        # Get live database context based on query
+        live_context_parts = []
         
-        # Build prompt
-        prompt = f"""You are an intelligent HR AI assistant with access to company data and HR knowledge.
+        if needs_stats:
+            live_context_parts.append(get_performance_statistics())
+        
+        if needs_employee_context:
+            live_context_parts.append("CURRENT EMPLOYEES (Sample):\n" + get_employee_context(limit=15))
+        
+        if needs_project_context:
+            live_context_parts.append("CURRENT PROJECTS:\n" + get_project_context())
+        
+        live_context = "\n\n".join(live_context_parts)
+        
+        # Build enhanced prompt
+        prompt = f"""You are an intelligent HR AI assistant with access to comprehensive employee data.
 
 INSTRUCTIONS:
-- Answer questions accurately using the provided context
-- Be professional, helpful, and concise
-- When listing employees or data, format clearly with bullet points
-- If you don't have enough information, say so honestly
-- For numerical questions, provide specific numbers
-- For "show me" or "list" questions, provide organized lists
+- Answer accurately using the provided context
+- Be professional, concise, and helpful
+- Format responses clearly with bullet points for lists
+- Provide specific numbers and names when available
+- If information is incomplete, say so honestly
+- For performance questions, cite specific metrics
+- For employee lists, show key details (name, department, performance)
 
-CONTEXT:
-{system_context}
+KNOWLEDGE BASE CONTEXT:
+{vector_context[:4000] if vector_context else "No vector data retrieved"}
+
+LIVE DATABASE CONTEXT:
+{live_context[:4000] if live_context else "No live context needed"}
+
+STATISTICS:
+Total Employees: {Employee.query.count()}
+Total Projects: {Project.query.count()}
+Company Avg Performance: {get_average_performance()}/100
 
 USER QUESTION:
 {query}
 
-ANSWER (be specific and helpful):
+ANSWER (be specific, professional, and well-formatted):
 """
         
         # Get response from LLM
@@ -300,62 +548,92 @@ ANSWER (be specific and helpful):
         print(f"Error in RAG query: {e}")
         import traceback
         traceback.print_exc()
-        return f"I apologize, but I encountered an error processing your question. Please try rephrasing or contact support if the issue persists."
+        return f"I apologize, but I encountered an error: {str(e)}. Please try rephrasing your question."
+
+
+def search_employee_by_criteria(criteria: dict):
+    """
+    Search employees by multiple criteria including performance
+    
+    Args:
+        criteria: dict with keys like 'department', 'min_performance', 'skills', etc.
+    
+    Returns:
+        List of matching employees
+    """
+    try:
+        query = Employee.query
+        
+        if criteria.get('department'):
+            query = query.filter(Employee.department == criteria['department'])
+        
+        if criteria.get('min_performance'):
+            query = query.filter(Employee.performance_score >= criteria['min_performance'])
+        
+        if criteria.get('max_performance'):
+            query = query.filter(Employee.performance_score <= criteria['max_performance'])
+        
+        if criteria.get('status'):
+            query = query.filter(Employee.status == criteria['status'])
+        
+        employees = query.all()
+        
+        # Filter by skills if specified
+        if criteria.get('skills'):
+            required_skills = set(criteria['skills'])
+            employees = [
+                emp for emp in employees
+                if emp.skills and required_skills.issubset(set(emp.skills.keys()))
+            ]
+        
+        return employees
+    except Exception as e:
+        print(f"Error searching employees: {e}")
+        return []
     
 # ======================================================
-# PERFORMANCE CALCULATION HELPERS
+# PERFORMANCE CALCULATION HELPERS (UPDATED)
 # ======================================================
 
-def calculate_random_performance(employee):
-    """
-    Calculate random but realistic performance score based on multiple factors
-    This simulates what the employee app would calculate
-    """
-    base_score = 60  # Base score
+def get_or_create_performance_metric(employee_id, month=None):
+    """Get or create performance metric for an employee for a specific month"""
+    if month is None:
+        month = datetime.utcnow().strftime("%Y-%m")
     
-    # Factor 1: Project participation (0-15 points)
-    project_count = ProjectMember.query.filter_by(employee_id=employee.employee_id).count()
-    if project_count > 0:
-        project_score = min(project_count * 5, 15)
-    else:
-        project_score = 0
+    metric = PerformanceMetric.query.filter_by(
+        employee_id=employee_id,
+        month=month
+    ).first()
     
-    # Factor 2: Skills count (0-10 points)
-    if employee.skills and isinstance(employee.skills, (list, dict)):
-        skill_count = len(employee.skills) if isinstance(employee.skills, list) else len(employee.skills.keys())
-        skill_score = min(skill_count * 2, 10)
-    else:
-        skill_score = 0
+    if not metric:
+        metric = PerformanceMetric(
+            employee_id=employee_id,
+            month=month
+        )
+        db.session.add(metric)
+        db.session.commit()
     
-    # Factor 3: Experience (0-10 points)
-    if employee.total_exp:
-        exp_score = min(employee.total_exp * 1.5, 10)
-    else:
-        exp_score = 0
-    
-    # Factor 4: Profile completeness (0-5 points)
-    completeness = 0
-    if employee.resume_path: completeness += 1
-    if employee.profile_pic: completeness += 1
-    if employee.phone: completeness += 1
-    if employee.department: completeness += 1
-    if employee.skills: completeness += 1
-    
-    # Factor 5: Random variation (simulates daily performance fluctuation) (-5 to +10)
-    random_factor = random.uniform(-5, 10)
-    
-    # Calculate total
-    total_score = base_score + project_score + skill_score + exp_score + completeness + random_factor
-    
-    # Cap between 40 and 100
-    return round(max(40, min(100, total_score)), 1)
+    return metric
 
 
-def update_all_performance_scores():
-    """Update performance scores for all employees"""
+def update_employee_performance_scores():
+    """Update all employees' performance scores from their latest metrics"""
+    current_month = datetime.utcnow().strftime("%Y-%m")
     employees = Employee.query.all()
+    
     for emp in employees:
-        emp.performance_score = calculate_random_performance(emp)
+        metric = PerformanceMetric.query.filter_by(
+            employee_id=emp.employee_id,
+            month=current_month
+        ).first()
+        
+        if metric:
+            emp.performance_score = metric.calculate_overall_score()
+        else:
+            # Create default metric if none exists
+            metric = get_or_create_performance_metric(emp.employee_id, current_month)
+            emp.performance_score = metric.calculate_overall_score()
+    
     db.session.commit()
 
 
@@ -367,48 +645,35 @@ def get_average_performance():
     
     scores = [emp.performance_score for emp in employees if emp.performance_score is not None]
     if not scores:
-        return 75.0  # Default
+        return 75.0
     
     return round(sum(scores) / len(scores), 1)
 
 
 def calculate_performance_metrics(employee):
-    """Calculate detailed performance metrics for an employee"""
+    """Get detailed performance metrics for an employee from database"""
+    current_month = datetime.utcnow().strftime("%Y-%m")
     
-    # Project participation score
-    project_count = ProjectMember.query.filter_by(employee_id=employee.employee_id).count()
-    project_score = min((project_count * 5), 15)
+    metric = PerformanceMetric.query.filter_by(
+        employee_id=employee.employee_id,
+        month=current_month
+    ).first()
     
-    # Skills score
-    if employee.skills and isinstance(employee.skills, (list, dict)):
-        skill_count = len(employee.skills) if isinstance(employee.skills, list) else len(employee.skills.keys())
-        skill_score = min(skill_count * 2, 10)
-    else:
-        skill_score = 0
-    
-    # Experience score
-    exp_score = min((employee.total_exp or 0) * 1.5, 10) if employee.total_exp else 0
-    
-    # Profile completeness
-    completeness_items = [employee.resume_path, employee.profile_pic, employee.phone, 
-                          employee.department, employee.skills]
-    completeness = sum(1 for item in completeness_items if item)
-    
-    # Simulated metrics (these would come from employee app in production)
-    attendance = round(random.uniform(85, 98), 1)
-    task_completion = round(random.uniform(80, 95), 1)
-    quality = round(random.uniform(75, 95), 1)
-    punctuality = round(random.uniform(85, 98), 1)
+    if not metric:
+        # Create default if doesn't exist
+        metric = get_or_create_performance_metric(employee.employee_id, current_month)
     
     return {
-        "project_participation": round(project_score, 1),
-        "skills_score": round(skill_score, 1),
-        "experience_score": round(exp_score, 1),
-        "profile_completeness": completeness,
-        "attendance": attendance,
-        "task_completion": task_completion,
-        "quality": quality,
-        "punctuality": punctuality
+        "project_participation": min(ProjectMember.query.filter_by(employee_id=employee.employee_id).count() * 5, 15),
+        "skills_score": min(len(employee.skills) * 2, 10) if employee.skills else 0,
+        "experience_score": min((employee.total_exp or 0) * 1.5, 10),
+        "profile_completeness": sum(1 for item in [employee.resume_path, employee.profile_pic, employee.phone, employee.department, employee.skills] if item),
+        "attendance": metric.attendance_score,
+        "task_completion": metric.task_completion_score,
+        "quality": metric.quality_score,
+        "punctuality": metric.punctuality_score,
+        "collaboration": metric.collaboration_score,
+        "productivity": metric.productivity_score
     }
 
 
@@ -450,9 +715,8 @@ def dashboard():
     if "user" not in session:
         return redirect("/login")
     
-    # Update performance scores on each dashboard load
-    # (In production, this would be done by employee app via API)
-    update_all_performance_scores()
+    # Update performance scores from database metrics
+    update_employee_performance_scores()
     
     # Calculate average
     avg_performance = get_average_performance()
@@ -463,8 +727,6 @@ def dashboard():
         total_projects=Project.query.count(),
         avg_performance=avg_performance
     )
-
-
 # ======================================================
 # EMPLOYEE ROUTES
 # ======================================================
@@ -1025,112 +1287,129 @@ def project_assignments_api():
 # PERFORMANCE API ENDPOINTS
 # ======================================================
 
-@app.route("/api/performance/mock-realtime", methods=["GET", "POST"])
-def mock_realtime_performance():
+@app.route("/api/performance/realtime", methods=["GET", "POST"])
+def realtime_performance():
     """
-    Mock API that simulates real-time performance data from employee app
+    Real performance API that reads from database
     
-    GET: Returns current mock performance data for all employees
-    POST: Simulates receiving real-time updates
+    GET: Returns current performance data for all employees
+    POST: Updates performance data for an employee
     """
     
     if request.method == "GET":
-        # Generate mock real-time performance data
         employees = Employee.query.all()
-        mock_data = {
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        
+        response_data = {
             "timestamp": datetime.utcnow().isoformat(),
-            "source": "employee_app_simulator",
+            "source": "performance_database",
+            "month": current_month,
             "data": []
         }
         
         for emp in employees:
-            # Simulate real-time metrics
+            metric = PerformanceMetric.query.filter_by(
+                employee_id=emp.employee_id,
+                month=current_month
+            ).first()
+            
+            if not metric:
+                metric = get_or_create_performance_metric(emp.employee_id, current_month)
+            
             performance_data = {
                 "employee_id": emp.employee_id,
                 "full_name": emp.full_name,
-                "performance_score": round(random.uniform(65, 98), 1),
-                "metrics": {
-                    "attendance": {
-                        "score": round(random.uniform(85, 100), 1),
-                        "days_present": random.randint(20, 22),
-                        "days_total": 22,
-                        "late_arrivals": random.randint(0, 3)
-                    },
-                    "task_completion": {
-                        "score": round(random.uniform(80, 98), 1),
-                        "tasks_completed": random.randint(25, 45),
-                        "tasks_assigned": random.randint(30, 50),
-                        "on_time_completion": round(random.uniform(85, 95), 1)
-                    },
-                    "quality": {
-                        "score": round(random.uniform(75, 95), 1),
-                        "bug_rate": round(random.uniform(0, 5), 2),
-                        "review_rating": round(random.uniform(3.5, 5.0), 1),
-                        "rework_required": round(random.uniform(0, 10), 1)
-                    },
-                    "punctuality": {
-                        "score": round(random.uniform(85, 100), 1),
-                        "meeting_attendance": round(random.uniform(90, 100), 1),
-                        "deadline_adherence": round(random.uniform(85, 98), 1)
-                    },
-                    "collaboration": {
-                        "score": round(random.uniform(75, 95), 1),
-                        "peer_reviews": random.randint(5, 15),
-                        "team_contributions": random.randint(10, 30),
-                        "communication_rating": round(random.uniform(3.5, 5.0), 1)
-                    },
-                    "productivity": {
-                        "score": round(random.uniform(70, 95), 1),
-                        "lines_of_code": random.randint(500, 2000),
-                        "commits": random.randint(20, 100),
-                        "story_points": random.randint(15, 40)
-                    }
-                },
+                "performance_score": metric.calculate_overall_score(),
+                "metrics": metric.to_dict()["metrics"],
                 "projects": {
-                    "active": ProjectMember.query.filter_by(employee_id=emp.employee_id).count(),
-                    "completed_this_month": random.randint(0, 3)
+                    "active": ProjectMember.query.filter_by(employee_id=emp.employee_id).count()
                 },
-                "last_updated": (datetime.utcnow() - timedelta(minutes=random.randint(1, 30))).isoformat(),
-                "status": random.choice(["active", "active", "active", "on_leave"]),
+                "last_updated": metric.last_updated.isoformat(),
+                "status": emp.status or "active",
                 "alerts": []
             }
             
             # Add alerts for low performance
-            if performance_data["performance_score"] < 70:
+            overall_score = metric.calculate_overall_score()
+            if overall_score < 70:
                 performance_data["alerts"].append({
                     "type": "warning",
                     "message": "Performance below threshold"
                 })
-            if performance_data["metrics"]["attendance"]["score"] < 85:
+            if metric.attendance_score < 85:
                 performance_data["alerts"].append({
                     "type": "attention",
                     "message": "Attendance needs improvement"
                 })
             
-            mock_data["data"].append(performance_data)
+            response_data["data"].append(performance_data)
         
-        return jsonify(mock_data), 200
+        return jsonify(response_data), 200
     
     elif request.method == "POST":
-        # Simulate receiving performance update from employee app
         data = request.get_json()
         
         if not data:
             return jsonify({"error": "No data provided"}), 400
         
-        # Validate and process the mock data
-        employee = Employee.query.filter_by(employee_id=data.get("employee_id")).first()
+        employee_id = data.get("employee_id")
+        month = data.get("month", datetime.utcnow().strftime("%Y-%m"))
         
+        employee = Employee.query.filter_by(employee_id=employee_id).first()
         if not employee:
             return jsonify({"error": "Employee not found"}), 404
         
-        # Update performance score
-        employee.performance_score = data.get("performance_score", 75.0)
+        # Get or create metric
+        metric = get_or_create_performance_metric(employee_id, month)
+        
+        # Update metrics if provided
+        if "metrics" in data:
+            metrics = data["metrics"]
+            
+            if "attendance" in metrics:
+                metric.attendance_score = metrics["attendance"].get("score", metric.attendance_score)
+                metric.days_present = metrics["attendance"].get("days_present", metric.days_present)
+                metric.days_total = metrics["attendance"].get("days_total", metric.days_total)
+                metric.late_arrivals = metrics["attendance"].get("late_arrivals", metric.late_arrivals)
+            
+            if "task_completion" in metrics:
+                metric.task_completion_score = metrics["task_completion"].get("score", metric.task_completion_score)
+                metric.tasks_completed = metrics["task_completion"].get("tasks_completed", metric.tasks_completed)
+                metric.tasks_assigned = metrics["task_completion"].get("tasks_assigned", metric.tasks_assigned)
+            
+            if "quality" in metrics:
+                metric.quality_score = metrics["quality"].get("score", metric.quality_score)
+                metric.bug_rate = metrics["quality"].get("bug_rate", metric.bug_rate)
+                metric.review_rating = metrics["quality"].get("review_rating", metric.review_rating)
+            
+            if "punctuality" in metrics:
+                metric.punctuality_score = metrics["punctuality"].get("score", metric.punctuality_score)
+                metric.meeting_attendance = metrics["punctuality"].get("meeting_attendance", metric.meeting_attendance)
+                metric.deadline_adherence = metrics["punctuality"].get("deadline_adherence", metric.deadline_adherence)
+            
+            if "collaboration" in metrics:
+                metric.collaboration_score = metrics["collaboration"].get("score", metric.collaboration_score)
+                metric.peer_reviews = metrics["collaboration"].get("peer_reviews", metric.peer_reviews)
+                metric.team_contributions = metrics["collaboration"].get("team_contributions", metric.team_contributions)
+            
+            if "productivity" in metrics:
+                metric.productivity_score = metrics["productivity"].get("score", metric.productivity_score)
+                metric.lines_of_code = metrics["productivity"].get("lines_of_code", metric.lines_of_code)
+                metric.commits = metrics["productivity"].get("commits", metric.commits)
+        
+        metric.last_updated = datetime.utcnow()
+        if "notes" in data:
+            metric.notes = data["notes"]
+        
+        db.session.commit()
+        
+        # Update employee's overall score
+        employee.performance_score = metric.calculate_overall_score()
         db.session.commit()
         
         return jsonify({
             "success": True,
-            "message": "Performance data received and processed",
+            "message": "Performance data updated",
             "employee_id": employee.employee_id,
             "updated_score": employee.performance_score,
             "timestamp": datetime.utcnow().isoformat()

@@ -3,6 +3,8 @@ csv.field_size_limit(2**31 - 1)
 
 import os
 import glob
+import json
+from datetime import datetime
 from langchain_community.document_loaders import CSVLoader, PyPDFLoader, Docx2txtLoader, UnstructuredWordDocumentLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -10,18 +12,23 @@ from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
+# Import database models
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from app import app, db, Employee, PerformanceMetric, Project, ProjectMember
+
 # -----------------------------------------------------------
 # CONFIG
 # -----------------------------------------------------------
-RESUME_FOLDER = "./uploads"          # Folder containing employee resumes
-CHROMA_DIR = "ayla_data/Oasis33_JO_data/chroma_db" # Persistent storage
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # FAST CPU EMBEDDINGS
+RESUME_FOLDER = "./uploads"
+CHROMA_DIR = "ayla_data/Oasis33_JO_data/chroma_db"
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 LLM_MODEL = "llama3.2:3b"
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
 
 # -----------------------------------------------------------
-# 1. LOAD MULTIPLE CSV FILES
+# 1. LOAD CSV FILES
 # -----------------------------------------------------------
 def load_all_csv(folder_path):
     documents = []
@@ -31,7 +38,6 @@ def load_all_csv(folder_path):
         return documents
     
     csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
-
     print(f"Found {len(csv_files)} CSV files")
 
     for file_path in csv_files:
@@ -49,7 +55,7 @@ def load_all_csv(folder_path):
 
 
 # -----------------------------------------------------------
-# 2. LOAD RESUME FILES (PDF, DOC, DOCX)
+# 2. LOAD RESUME FILES
 # -----------------------------------------------------------
 def load_all_resumes(folder_path):
     """Load all resume files from the uploads folder"""
@@ -57,11 +63,9 @@ def load_all_resumes(folder_path):
     
     if not os.path.exists(folder_path):
         print(f"⚠️  Resume folder not found: {folder_path}")
-        print(f"Creating folder: {folder_path}")
         os.makedirs(folder_path, exist_ok=True)
         return documents
     
-    # Get all resume files (PDF, DOC, DOCX)
     pdf_files = glob.glob(os.path.join(folder_path, "*_resume_*.pdf"))
     doc_files = glob.glob(os.path.join(folder_path, "*_resume_*.doc"))
     docx_files = glob.glob(os.path.join(folder_path, "*_resume_*.docx"))
@@ -75,18 +79,14 @@ def load_all_resumes(folder_path):
     
     for file_path in all_resume_files:
         try:
-            # Extract employee ID from filename (format: EMPXXXXXX_resume_...)
             filename = os.path.basename(file_path)
             employee_id = filename.split('_')[0]
             
             print(f"Loading resume: {filename} (Employee: {employee_id})")
             
-            # Load based on file extension
             if file_path.endswith('.pdf'):
                 loader = PyPDFLoader(file_path)
                 pages = loader.load()
-                
-                # Combine all pages into one document with metadata
                 combined_text = "\n\n".join([page.page_content for page in pages])
                 doc = Document(
                     page_content=combined_text,
@@ -103,8 +103,6 @@ def load_all_resumes(folder_path):
             elif file_path.endswith('.docx'):
                 loader = Docx2txtLoader(file_path)
                 docs = loader.load()
-                
-                # Add metadata to each document
                 for doc in docs:
                     doc.metadata.update({
                         "employee_id": employee_id,
@@ -115,11 +113,9 @@ def load_all_resumes(folder_path):
                 documents.extend(docs)
                 
             elif file_path.endswith('.doc'):
-                # For .doc files, use UnstructuredWordDocumentLoader
                 try:
                     loader = UnstructuredWordDocumentLoader(file_path)
                     docs = loader.load()
-                    
                     for doc in docs:
                         doc.metadata.update({
                             "employee_id": employee_id,
@@ -130,7 +126,6 @@ def load_all_resumes(folder_path):
                     documents.extend(docs)
                 except Exception as e:
                     print(f"  ⚠️  Warning: Could not load .doc file {filename}: {e}")
-                    print(f"  Tip: Install python-docx or unstructured library")
             
             print(f"  ✓ Successfully loaded resume for {employee_id}")
             
@@ -143,7 +138,228 @@ def load_all_resumes(folder_path):
 
 
 # -----------------------------------------------------------
-# 3. CHUNKING
+# 3. NEW: LOAD PERFORMANCE METRICS FROM DATABASE
+# -----------------------------------------------------------
+def load_performance_metrics():
+    """Load performance metrics from database and convert to documents"""
+    documents = []
+    
+    with app.app_context():
+        employees = Employee.query.all()
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        
+        print(f"\nLoading performance metrics for {len(employees)} employees...")
+        
+        for emp in employees:
+            try:
+                # Get performance metric
+                metric = PerformanceMetric.query.filter_by(
+                    employee_id=emp.employee_id,
+                    month=current_month
+                ).first()
+                
+                if not metric:
+                    print(f"  ⚠️  No metrics found for {emp.employee_id}, skipping...")
+                    continue
+                
+                # Create comprehensive performance text
+                performance_text = f"""
+EMPLOYEE PERFORMANCE REPORT
+===========================
+Employee ID: {emp.employee_id}
+Employee Name: {emp.full_name}
+Department: {emp.department or 'Not specified'}
+Job Title: {emp.job_title or 'Not specified'}
+Report Month: {metric.month}
+Last Updated: {metric.last_updated.strftime('%Y-%m-%d %H:%M:%S')}
+
+OVERALL PERFORMANCE SCORE: {metric.calculate_overall_score()}/100
+
+DETAILED METRICS:
+
+1. ATTENDANCE (Score: {metric.attendance_score}/100)
+   - Days Present: {metric.days_present} out of {metric.days_total} working days
+   - Attendance Rate: {(metric.days_present/metric.days_total*100):.1f}%
+   - Late Arrivals: {metric.late_arrivals} times
+   - This employee's attendance is {'excellent' if metric.attendance_score >= 90 else 'good' if metric.attendance_score >= 75 else 'needs improvement'}
+
+2. TASK COMPLETION (Score: {metric.task_completion_score}/100)
+   - Tasks Completed: {metric.tasks_completed} out of {metric.tasks_assigned} assigned tasks
+   - Completion Rate: {(metric.tasks_completed/metric.tasks_assigned*100):.1f}%
+   - On-Time Delivery: {metric.on_time_completion}%
+   - This employee {'consistently delivers on time' if metric.on_time_completion >= 90 else 'usually meets deadlines' if metric.on_time_completion >= 75 else 'struggles with deadlines'}
+
+3. QUALITY OF WORK (Score: {metric.quality_score}/100)
+   - Bug/Error Rate: {metric.bug_rate}%
+   - Peer Review Rating: {metric.review_rating}/5.0
+   - Rework Required: {metric.rework_required}%
+   - Work quality is {'outstanding' if metric.quality_score >= 90 else 'good' if metric.quality_score >= 75 else 'acceptable' if metric.quality_score >= 60 else 'below standard'}
+
+4. PUNCTUALITY (Score: {metric.punctuality_score}/100)
+   - Meeting Attendance: {metric.meeting_attendance}%
+   - Deadline Adherence: {metric.deadline_adherence}%
+   - This employee is {'very reliable' if metric.punctuality_score >= 90 else 'generally punctual' if metric.punctuality_score >= 75 else 'sometimes late'}
+
+5. COLLABORATION (Score: {metric.collaboration_score}/100)
+   - Peer Reviews Conducted: {metric.peer_reviews}
+   - Team Contributions: {metric.team_contributions}
+   - Communication Rating: {metric.communication_rating}/5.0
+   - Team collaboration is {'excellent' if metric.collaboration_score >= 90 else 'good' if metric.collaboration_score >= 75 else 'adequate'}
+
+6. PRODUCTIVITY (Score: {metric.productivity_score}/100)
+   - Lines of Code: {metric.lines_of_code}
+   - Git Commits: {metric.commits}
+   - Story Points Completed: {metric.story_points}
+   - Productivity level is {'very high' if metric.productivity_score >= 90 else 'good' if metric.productivity_score >= 75 else 'average'}
+
+PERFORMANCE SUMMARY:
+{emp.full_name} has an overall performance score of {metric.calculate_overall_score()}/100.
+"""
+                
+                # Add performance trend analysis
+                if metric.calculate_overall_score() >= 85:
+                    performance_text += f"\nThis employee is a HIGH PERFORMER and excels in their role."
+                elif metric.calculate_overall_score() >= 70:
+                    performance_text += f"\nThis employee meets expectations and performs satisfactorily."
+                else:
+                    performance_text += f"\nThis employee needs performance improvement and additional support."
+                
+                # Add strengths and areas for improvement
+                scores = {
+                    'Attendance': metric.attendance_score,
+                    'Task Completion': metric.task_completion_score,
+                    'Quality': metric.quality_score,
+                    'Punctuality': metric.punctuality_score,
+                    'Collaboration': metric.collaboration_score,
+                    'Productivity': metric.productivity_score
+                }
+                
+                strengths = [k for k, v in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:2]]
+                improvements = [k for k, v in sorted(scores.items(), key=lambda x: x[1])[:2]]
+                
+                performance_text += f"\n\nSTRENGTHS: {', '.join(strengths)}"
+                performance_text += f"\nAREAS FOR IMPROVEMENT: {', '.join(improvements)}"
+                
+                # Add notes if available
+                if metric.notes:
+                    performance_text += f"\n\nADDITIONAL NOTES:\n{metric.notes}"
+                
+                # Create document
+                doc = Document(
+                    page_content=performance_text,
+                    metadata={
+                        "employee_id": emp.employee_id,
+                        "employee_name": emp.full_name,
+                        "document_type": "performance_metrics",
+                        "month": metric.month,
+                        "overall_score": metric.calculate_overall_score(),
+                        "department": emp.department or "Unknown",
+                        "last_updated": metric.last_updated.isoformat(),
+                        "source": "performance_database"
+                    }
+                )
+                
+                documents.append(doc)
+                print(f"  ✓ Loaded performance data for {emp.full_name} ({emp.employee_id})")
+                
+            except Exception as e:
+                print(f"  ✗ Error loading performance for {emp.employee_id}: {e}")
+                continue
+        
+        print(f"\nTotal performance documents loaded: {len(documents)}")
+    
+    return documents
+
+
+# -----------------------------------------------------------
+# 4. NEW: LOAD PROJECT ASSIGNMENTS FROM DATABASE
+# -----------------------------------------------------------
+def load_project_assignments():
+    """Load project assignments from database and convert to documents"""
+    documents = []
+    
+    with app.app_context():
+        projects = Project.query.all()
+        
+        print(f"\nLoading project assignments for {len(projects)} projects...")
+        
+        for project in projects:
+            try:
+                # Get all members
+                members = ProjectMember.query.filter_by(project_id=project.id).all()
+                
+                if not members:
+                    print(f"  ⚠️  No members for project {project.project_code}, skipping...")
+                    continue
+                
+                # Build project document
+                project_text = f"""
+PROJECT INFORMATION
+===================
+Project Code: {project.project_code}
+Project Name: {project.name}
+Status: {project.status}
+Description: {project.description or 'No description provided'}
+Created: {project.created_at.strftime('%Y-%m-%d')}
+
+TEAM COMPOSITION:
+Team Size: {len(members)} members
+
+TEAM MEMBERS:
+"""
+                
+                member_details = []
+                for member in members:
+                    emp = Employee.query.filter_by(employee_id=member.employee_id).first()
+                    if emp:
+                        # Get performance score
+                        performance = emp.performance_score or 75.0
+                        
+                        member_info = f"""
+- {emp.full_name} ({emp.employee_id})
+  Role: {member.role}
+  Department: {emp.department or 'N/A'}
+  Job Title: {emp.job_title or 'N/A'}
+  Performance Score: {performance}/100
+  Skills: {', '.join(emp.skills.keys()) if emp.skills else 'Not listed'}
+  Experience: {emp.total_exp or 0} years
+"""
+                        project_text += member_info
+                        member_details.append(emp.full_name)
+                
+                project_text += f"\n\nPROJECT SUMMARY:\n"
+                project_text += f"The {project.name} project (code: {project.project_code}) "
+                project_text += f"is currently {project.status.lower()} with a team of {len(members)} members. "
+                project_text += f"Team members include: {', '.join(member_details)}."
+                
+                # Create document
+                doc = Document(
+                    page_content=project_text,
+                    metadata={
+                        "project_code": project.project_code,
+                        "project_name": project.name,
+                        "document_type": "project_assignment",
+                        "status": project.status,
+                        "team_size": len(members),
+                        "created_at": project.created_at.isoformat(),
+                        "source": "project_database"
+                    }
+                )
+                
+                documents.append(doc)
+                print(f"  ✓ Loaded project data for {project.name} ({project.project_code})")
+                
+            except Exception as e:
+                print(f"  ✗ Error loading project {project.project_code}: {e}")
+                continue
+        
+        print(f"\nTotal project documents loaded: {len(documents)}")
+    
+    return documents
+
+
+# -----------------------------------------------------------
+# 5. CHUNKING
 # -----------------------------------------------------------
 def chunk_documents(documents):
     """Split documents into smaller chunks for better retrieval"""
@@ -154,7 +370,6 @@ def chunk_documents(documents):
     )
     chunks = splitter.split_documents(documents)
     
-    # Add chunk metadata
     for i, chunk in enumerate(chunks):
         chunk.metadata['chunk_id'] = i
         
@@ -162,7 +377,7 @@ def chunk_documents(documents):
 
 
 # -----------------------------------------------------------
-# 4. FAST EMBEDDINGS + CHROMA
+# 6. CREATE VECTOR DATABASE
 # -----------------------------------------------------------
 def create_vector_db(chunks):
     """Create and persist vector database"""
@@ -175,7 +390,7 @@ def create_vector_db(chunks):
         import shutil
         shutil.rmtree(CHROMA_DIR)
     
-    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)  
+    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
 
     vectordb = Chroma.from_documents(
         documents=chunks,
@@ -188,7 +403,7 @@ def create_vector_db(chunks):
 
 
 # -----------------------------------------------------------
-# 5. RETRIEVER
+# 7. RETRIEVER
 # -----------------------------------------------------------
 def get_retriever():
     embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
@@ -199,78 +414,70 @@ def get_retriever():
     return vectordb.as_retriever(search_kwargs={"k": 5})
 
 
-
 # -----------------------------------------------------------
-# 6. ENHANCED: SEARCH BY EMPLOYEE ID
-# -----------------------------------------------------------
-def search_employee_resume(employee_id):
-    """Search for specific employee's resume content"""
-    retriever = get_retriever()
-    
-    # Search with employee ID filter
-    query = f"employee {employee_id} resume skills experience education"
-    docs = retriever.invoke(query)
-    
-    # Filter for this specific employee
-    employee_docs = [
-        doc for doc in docs 
-        if doc.metadata.get('employee_id') == employee_id
-    ]
-    
-    if employee_docs:
-        return "\n\n".join([doc.page_content for doc in employee_docs])
-    else:
-        return f"No resume found for employee {employee_id}"
-
-
-# -----------------------------------------------------------
-# 7. RUN PIPELINE
+# 8. RUN COMPLETE PIPELINE
 # -----------------------------------------------------------
 if __name__ == "__main__":
     print("="*60)
-    print("🚀 Starting RAG Vector Database Creation Pipeline")
+    print("🚀 Starting Enhanced RAG Pipeline with Performance Metrics")
     print("="*60)
     
     all_documents = []
     
-    
     # Step 1: Load Resumes
-    print("\n[1/3] Loading resume files...")
+    print("\n[1/4] Loading resume files...")
     resume_docs = load_all_resumes(RESUME_FOLDER)
     all_documents.extend(resume_docs)
     
+    # Step 2: Load Performance Metrics from Database
+    print("\n[2/4] Loading performance metrics from database...")
+    performance_docs = load_performance_metrics()
+    all_documents.extend(performance_docs)
+    
+    # Step 3: Load Project Assignments from Database
+    print("\n[3/4] Loading project assignments from database...")
+    project_docs = load_project_assignments()
+    all_documents.extend(project_docs)
+    
     print(f"\n📊 Total documents loaded: {len(all_documents)}")
     print(f"   - Resume documents: {len(resume_docs)}")
+    print(f"   - Performance documents: {len(performance_docs)}")
+    print(f"   - Project documents: {len(project_docs)}")
     
     if len(all_documents) == 0:
-        print("\n⚠️  Warning: No documents loaded! Check your folder paths.")
-        print(f"   - Resume folder: {RESUME_FOLDER}")
-        print("\nPlease ensure:")
-        print("1. CSV files exist in './csv folder/'")
-        print("2. Resume files exist in './uploads/' with naming: EMPXXXXXX_resume_*.pdf")
+        print("\n⚠️  Warning: No documents loaded! Check your database and folders.")
         exit(1)
     
-    # Step 2: Chunk the documents
-    print("\n[3/5] Chunking documents...")
+    # Step 4: Chunk the documents
+    print("\n[4/4] Chunking documents...")
     chunks = chunk_documents(all_documents)
     print(f"✓ Generated {len(chunks)} total chunks")
     
-    # Show sample chunk
-    if chunks:
-        print("\n📄 Sample chunk:")
-        print(f"Content: {chunks[0].page_content[:200]}...")
-        print(f"Metadata: {chunks[0].metadata}")
+    # Show sample chunks by type
+    print("\n📄 Sample chunks:")
+    for doc_type in ["resume", "performance_metrics", "project_assignment"]:
+        sample = next((c for c in chunks if c.metadata.get('document_type') == doc_type), None)
+        if sample:
+            print(f"\n{doc_type.upper()}:")
+            print(f"Content preview: {sample.page_content[:200]}...")
+            print(f"Metadata: {sample.metadata}")
     
-    # Step 3: Create Vector DB
-    print("\n[4/5] Creating vector database...")
+    # Step 5: Create Vector DB
+    print("\n[5/5] Creating vector database...")
     create_vector_db(chunks)
     
     print("\n" + "="*60)
-    print("✅ Pipeline completed successfully!")
+    print("✅ Enhanced Pipeline Completed Successfully!")
     print("="*60)
-    print("\n💡 Usage:")
-    print("1. Start your Flask app: python app.py")
-    print("2. The AI assistant will use this vector database")
-    print("3. Ask questions about employees, skills, and resumes")
-    print("\n📌 Note: Performance metrics from the mock API are NOT embedded")
-    print("   They are generated dynamically at runtime in app.py")
+    print("\n💡 Your RAG system now includes:")
+    print("   ✓ Employee resumes")
+    print("   ✓ Performance metrics with detailed scores")
+    print("   ✓ Project assignments and team compositions")
+    print("\n🔍 Example queries you can now ask:")
+    print("   - 'Show me the performance of employee EMP001'")
+    print("   - 'Who are the top performers in the Engineering department?'")
+    print("   - 'Which employees need performance improvement?'")
+    print("   - 'What is the average attendance score?'")
+    print("   - 'Who is working on project PROJ12345?'")
+    print("   - 'Find high-performing Python developers'")
+    print("\n📌 To use: python app.py")
