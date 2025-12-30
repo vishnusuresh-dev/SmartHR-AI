@@ -1236,219 +1236,44 @@ def delete_project(project_id):
 
 
 
-# ======================================================
-# API ENDPOINTS (FOR TESTING) - Vishnu
-# ======================================================
+# ============================================
+# SIMPLE PERFORMANCE MANAGEMENT ROUTES
+# ============================================
 
-@app.route("/api/projects/assignments")
-def project_assignments_api():
-    """API endpoint for employee platform to get project assignments"""
-    projects = Project.query.all()
-    response = []
+# Add these corrected routes to your app.py
+# Replace the existing performance routes section
 
-    for p in projects:
-        members = ProjectMember.query.filter_by(project_id=p.id).all()
-        member_list = []
-        
-        for m in members:
-            employee = Employee.query.filter_by(employee_id=m.employee_id).first()
-            member_list.append({
-                "employee_id": m.employee_id,
-                "full_name": employee.full_name if employee else "Unknown",
-                "role": m.role
-            })
-        
-        response.append({
-            "project_code": p.project_code,
-            "name": p.name,
-            "status": p.status,
-            "members": member_list
-        })
+# ============================================
+# CORRECTED PERFORMANCE MANAGEMENT ROUTES
+# ============================================
 
-    return jsonify({"projects": response})
-
-
-# ======================================================
-# PERFORMANCE API ENDPOINTS
-# ======================================================
-
-@app.route("/api/performance/realtime", methods=["GET", "POST"])
-def realtime_performance():
-    """
-    Real performance API that reads from database
-    
-    GET: Returns current performance data for all employees
-    POST: Updates performance data for an employee
-    """
-    
-    if request.method == "GET":
-        employees = Employee.query.all()
-        current_month = datetime.utcnow().strftime("%Y-%m")
-        
-        response_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "source": "performance_database",
-            "month": current_month,
-            "data": []
-        }
-        
-        for emp in employees:
-            metric = PerformanceMetric.query.filter_by(
-                employee_id=emp.employee_id,
-                month=current_month
-            ).first()
-            
-            if not metric:
-                metric = get_or_create_performance_metric(emp.employee_id, current_month)
-            
-            performance_data = {
-                "employee_id": emp.employee_id,
-                "full_name": emp.full_name,
-                "performance_score": metric.calculate_overall_score(),
-                "metrics": metric.to_dict()["metrics"],
-                "projects": {
-                    "active": ProjectMember.query.filter_by(employee_id=emp.employee_id).count()
-                },
-                "last_updated": metric.last_updated.isoformat(),
-                "status": emp.status or "active",
-                "alerts": []
-            }
-            
-            # Add alerts for low performance
-            overall_score = metric.calculate_overall_score()
-            if overall_score < 70:
-                performance_data["alerts"].append({
-                    "type": "warning",
-                    "message": "Performance below threshold"
-                })
-            if metric.attendance_score < 85:
-                performance_data["alerts"].append({
-                    "type": "attention",
-                    "message": "Attendance needs improvement"
-                })
-            
-            response_data["data"].append(performance_data)
-        
-        return jsonify(response_data), 200
-    
-    elif request.method == "POST":
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-        
-        employee_id = data.get("employee_id")
-        month = data.get("month", datetime.utcnow().strftime("%Y-%m"))
-        
-        employee = Employee.query.filter_by(employee_id=employee_id).first()
-        if not employee:
-            return jsonify({"error": "Employee not found"}), 404
-        
-        # Get or create metric
-        metric = get_or_create_performance_metric(employee_id, month)
-        
-        # Update metrics if provided
-        if "metrics" in data:
-            metrics = data["metrics"]
-            
-            if "attendance" in metrics:
-                metric.attendance_score = metrics["attendance"].get("score", metric.attendance_score)
-                metric.days_present = metrics["attendance"].get("days_present", metric.days_present)
-                metric.days_total = metrics["attendance"].get("days_total", metric.days_total)
-                metric.late_arrivals = metrics["attendance"].get("late_arrivals", metric.late_arrivals)
-            
-            if "task_completion" in metrics:
-                metric.task_completion_score = metrics["task_completion"].get("score", metric.task_completion_score)
-                metric.tasks_completed = metrics["task_completion"].get("tasks_completed", metric.tasks_completed)
-                metric.tasks_assigned = metrics["task_completion"].get("tasks_assigned", metric.tasks_assigned)
-            
-            if "quality" in metrics:
-                metric.quality_score = metrics["quality"].get("score", metric.quality_score)
-                metric.bug_rate = metrics["quality"].get("bug_rate", metric.bug_rate)
-                metric.review_rating = metrics["quality"].get("review_rating", metric.review_rating)
-            
-            if "punctuality" in metrics:
-                metric.punctuality_score = metrics["punctuality"].get("score", metric.punctuality_score)
-                metric.meeting_attendance = metrics["punctuality"].get("meeting_attendance", metric.meeting_attendance)
-                metric.deadline_adherence = metrics["punctuality"].get("deadline_adherence", metric.deadline_adherence)
-            
-            if "collaboration" in metrics:
-                metric.collaboration_score = metrics["collaboration"].get("score", metric.collaboration_score)
-                metric.peer_reviews = metrics["collaboration"].get("peer_reviews", metric.peer_reviews)
-                metric.team_contributions = metrics["collaboration"].get("team_contributions", metric.team_contributions)
-            
-            if "productivity" in metrics:
-                metric.productivity_score = metrics["productivity"].get("score", metric.productivity_score)
-                metric.lines_of_code = metrics["productivity"].get("lines_of_code", metric.lines_of_code)
-                metric.commits = metrics["productivity"].get("commits", metric.commits)
-        
-        metric.last_updated = datetime.utcnow()
-        if "notes" in data:
-            metric.notes = data["notes"]
-        
-        db.session.commit()
-        
-        # Update employee's overall score
-        employee.performance_score = metric.calculate_overall_score()
-        db.session.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": "Performance data updated",
-            "employee_id": employee.employee_id,
-            "updated_score": employee.performance_score,
-            "timestamp": datetime.utcnow().isoformat()
-        }), 200
-        
-        
-# Add these routes to your app.py after the existing performance routes
-
-@app.route("/performance/manage")
-def manage_performance():
-    """Performance management dashboard with edit capabilities"""
+@app.route("/performance/list")
+def performance_list():
+    """Simple list view of all employees with performance data"""
     if "user" not in session:
         return redirect("/login")
     
-    current_month = datetime.utcnow().strftime("%Y-%m")
-    employees = Employee.query.all()
-    
-    performance_data = []
-    for emp in employees:
-        metric = PerformanceMetric.query.filter_by(
-            employee_id=emp.employee_id,
-            month=current_month
-        ).first()
-        
-        if not metric:
-            metric = get_or_create_performance_metric(emp.employee_id, current_month)
-        
-        performance_data.append({
-            "employee": emp,
-            "metric": metric,
-            "overall_score": metric.calculate_overall_score(),
-            "project_count": ProjectMember.query.filter_by(employee_id=emp.employee_id).count()
-        })
-    
-    # Sort by performance score
-    performance_data.sort(key=lambda x: x['overall_score'], reverse=True)
-    
-    return render_template(
-        "manage_performance.html",
-        performance_data=performance_data,
-        current_month=current_month,
-        avg_performance=get_average_performance()
-    )
+    return render_template("performance_list.html")
 
 
-@app.route("/performance/edit/<string:employee_id>")
-def edit_performance(employee_id):
-    """Edit performance metrics for a specific employee"""
+@app.route("/performance/edit")
+def performance_edit():
+    """Simple edit form for performance metrics - FIXED VERSION"""
     if "user" not in session:
         return redirect("/login")
     
-    employee = Employee.query.filter_by(employee_id=employee_id).first_or_404()
-    current_month = datetime.utcnow().strftime("%Y-%m")
+    employee_id = request.args.get('id')
+    if not employee_id:
+        flash("Employee ID required", "danger")
+        return redirect("/performance/list")
     
+    # Fetch the employee
+    employee = Employee.query.filter_by(employee_id=employee_id).first()
+    if not employee:
+        flash("Employee not found", "danger")
+        return redirect("/performance/list")
+    
+    current_month = datetime.utcnow().strftime("%Y-%m")
     metric = PerformanceMetric.query.filter_by(
         employee_id=employee_id,
         month=current_month
@@ -1457,310 +1282,201 @@ def edit_performance(employee_id):
     if not metric:
         metric = get_or_create_performance_metric(employee_id, current_month)
     
+    # Pass all necessary data to template
     return render_template(
-        "edit_performance.html",
+        "performance_edit.html",
         employee=employee,
         metric=metric,
         current_month=current_month
     )
 
 
-@app.route("/api/performance/update/<string:employee_id>", methods=["POST"])
-def update_performance_api(employee_id):
-    """API endpoint to update performance metrics with automatic calculation"""
+@app.route("/api/performance/list")
+def api_performance_list():
+    """API endpoint to get all employees with performance data"""
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
     try:
-        data = request.get_json()
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        employees = Employee.query.all()
         
+        employee_data = []
+        total_score = 0
+        
+        for emp in employees:
+            # Get or create performance metric
+            metric = PerformanceMetric.query.filter_by(
+                employee_id=emp.employee_id,
+                month=current_month
+            ).first()
+            
+            if not metric:
+                metric = get_or_create_performance_metric(emp.employee_id, current_month)
+            
+            overall_score = metric.calculate_overall_score()
+            total_score += overall_score
+            
+            employee_data.append({
+                "employee_id": emp.employee_id,
+                "name": emp.full_name,
+                "department": emp.department,
+                "overall_score": overall_score,
+                "attendance": metric.attendance_score,
+                "tasks": metric.task_completion_score,
+                "quality": metric.quality_score,
+                "last_updated": metric.last_updated.isoformat()
+            })
+        
+        # Calculate statistics
+        avg_score = total_score / len(employees) if employees else 0
+        
+        return jsonify({
+            "success": True,
+            "employees": employee_data,
+            "stats": {
+                "total_employees": len(employees),
+                "avg_score": avg_score,
+                "current_month": current_month
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in performance list API: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/performance/get/<string:employee_id>")
+def api_get_performance(employee_id):
+    """API endpoint to get single employee performance data"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
         employee = Employee.query.filter_by(employee_id=employee_id).first()
         if not employee:
             return jsonify({"success": False, "error": "Employee not found"}), 404
         
-        month = data.get("month", datetime.utcnow().strftime("%Y-%m"))
-        metric = get_or_create_performance_metric(employee_id, month)
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        metric = PerformanceMetric.query.filter_by(
+            employee_id=employee_id,
+            month=current_month
+        ).first()
         
-        # Update attendance metrics
-        if "attendance_score" in data:
-            metric.attendance_score = float(data["attendance_score"])
-        if "days_present" in data:
-            metric.days_present = int(data["days_present"])
-        if "days_total" in data:
-            metric.days_total = int(data["days_total"])
-        if "late_arrivals" in data:
-            metric.late_arrivals = int(data["late_arrivals"])
+        if not metric:
+            metric = get_or_create_performance_metric(employee_id, current_month)
         
-        # Update task completion metrics
-        if "task_completion_score" in data:
-            metric.task_completion_score = float(data["task_completion_score"])
-        if "tasks_completed" in data:
-            metric.tasks_completed = int(data["tasks_completed"])
-        if "tasks_assigned" in data:
-            metric.tasks_assigned = int(data["tasks_assigned"])
-        if "on_time_completion" in data:
-            metric.on_time_completion = float(data["on_time_completion"])
+        return jsonify({
+            "success": True,
+            "employee": {
+                "employee_id": employee.employee_id,
+                "full_name": employee.full_name,
+                "department": employee.department,
+                "job_title": employee.job_title
+            },
+            "metric": metric.to_dict()
+        }), 200
         
-        # Update quality metrics
-        if "quality_score" in data:
-            metric.quality_score = float(data["quality_score"])
-        if "bug_rate" in data:
-            metric.bug_rate = float(data["bug_rate"])
-        if "review_rating" in data:
-            metric.review_rating = float(data["review_rating"])
-        if "rework_required" in data:
-            metric.rework_required = float(data["rework_required"])
+    except Exception as e:
+        print(f"Error getting performance: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================
+# CRITICAL MISSING ROUTE - ADD THIS
+# ============================================
+
+@app.route("/api/performance/update/<string:employee_id>", methods=["POST"])
+def api_update_performance(employee_id):
+    """API endpoint to update employee performance metrics"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        # Get employee
+        employee = Employee.query.filter_by(employee_id=employee_id).first()
+        if not employee:
+            return jsonify({"success": False, "error": "Employee not found"}), 404
         
-        # Update punctuality metrics
-        if "punctuality_score" in data:
-            metric.punctuality_score = float(data["punctuality_score"])
-        if "meeting_attendance" in data:
-            metric.meeting_attendance = float(data["meeting_attendance"])
-        if "deadline_adherence" in data:
-            metric.deadline_adherence = float(data["deadline_adherence"])
+        # Get JSON data from request
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
         
-        # Update collaboration metrics
-        if "collaboration_score" in data:
-            metric.collaboration_score = float(data["collaboration_score"])
-        if "peer_reviews" in data:
-            metric.peer_reviews = int(data["peer_reviews"])
-        if "team_contributions" in data:
-            metric.team_contributions = int(data["team_contributions"])
-        if "communication_rating" in data:
-            metric.communication_rating = float(data["communication_rating"])
+        # Get or create metric for the specified month
+        month = data.get('month', datetime.utcnow().strftime("%Y-%m"))
+        metric = PerformanceMetric.query.filter_by(
+            employee_id=employee_id,
+            month=month
+        ).first()
         
-        # Update productivity metrics
-        if "productivity_score" in data:
-            metric.productivity_score = float(data["productivity_score"])
-        if "lines_of_code" in data:
-            metric.lines_of_code = int(data["lines_of_code"])
-        if "commits" in data:
-            metric.commits = int(data["commits"])
-        if "story_points" in data:
-            metric.story_points = int(data["story_points"])
+        if not metric:
+            metric = PerformanceMetric(employee_id=employee_id, month=month)
+            db.session.add(metric)
         
-        # Update notes
-        if "notes" in data:
-            metric.notes = data["notes"]
+        # Update all metric fields
+        metric.attendance_score = float(data.get('attendance_score', 85.0))
+        metric.days_present = int(data.get('days_present', 20))
+        metric.days_total = int(data.get('days_total', 22))
+        metric.late_arrivals = int(data.get('late_arrivals', 0))
         
-        # Update timestamp
+        metric.task_completion_score = float(data.get('task_completion_score', 80.0))
+        metric.tasks_completed = int(data.get('tasks_completed', 30))
+        metric.tasks_assigned = int(data.get('tasks_assigned', 35))
+        metric.on_time_completion = float(data.get('on_time_completion', 90.0))
+        
+        metric.quality_score = float(data.get('quality_score', 85.0))
+        metric.bug_rate = float(data.get('bug_rate', 2.0))
+        metric.review_rating = float(data.get('review_rating', 4.0))
+        metric.rework_required = float(data.get('rework_required', 5.0))
+        
+        metric.punctuality_score = float(data.get('punctuality_score', 90.0))
+        metric.meeting_attendance = float(data.get('meeting_attendance', 95.0))
+        metric.deadline_adherence = float(data.get('deadline_adherence', 90.0))
+        
+        metric.collaboration_score = float(data.get('collaboration_score', 85.0))
+        metric.peer_reviews = int(data.get('peer_reviews', 10))
+        metric.team_contributions = int(data.get('team_contributions', 20))
+        metric.communication_rating = float(data.get('communication_rating', 4.0))
+        
+        metric.productivity_score = float(data.get('productivity_score', 80.0))
+        metric.lines_of_code = int(data.get('lines_of_code', 1000))
+        metric.commits = int(data.get('commits', 50))
+        metric.story_points = int(data.get('story_points', 25))
+        
+        metric.notes = data.get('notes', '')
         metric.last_updated = datetime.utcnow()
         
-        # Calculate and update overall score
+        # Calculate overall score and update employee
         overall_score = metric.calculate_overall_score()
         employee.performance_score = overall_score
         
-        # Commit to database
+        # Commit changes
         db.session.commit()
         
         return jsonify({
             "success": True,
             "message": "Performance metrics updated successfully",
-            "employee_id": employee_id,
             "overall_score": overall_score,
-            "metrics": metric.to_dict()
+            "employee_id": employee_id,
+            "month": month
         }), 200
         
+    except ValueError as ve:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": f"Invalid data format: {str(ve)}"
+        }), 400
     except Exception as e:
         db.session.rollback()
         print(f"Error updating performance: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route("/api/performance/bulk-update", methods=["POST"])
-def bulk_update_performance_api():
-    """Bulk update multiple employees' performance metrics"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    try:
-        data = request.get_json()
-        updates = data.get("updates", [])
-        
-        if not updates:
-            return jsonify({"success": False, "error": "No updates provided"}), 400
-        
-        results = {
-            "success": 0,
-            "failed": 0,
-            "errors": []
-        }
-        
-        for update in updates:
-            try:
-                employee_id = update.get("employee_id")
-                employee = Employee.query.filter_by(employee_id=employee_id).first()
-                
-                if not employee:
-                    results["failed"] += 1
-                    results["errors"].append(f"Employee {employee_id} not found")
-                    continue
-                
-                month = update.get("month", datetime.utcnow().strftime("%Y-%m"))
-                metric = get_or_create_performance_metric(employee_id, month)
-                
-                # Update all provided metrics
-                for key, value in update.items():
-                    if key not in ["employee_id", "month"] and hasattr(metric, key):
-                        if isinstance(getattr(metric, key), int):
-                            setattr(metric, key, int(value))
-                        elif isinstance(getattr(metric, key), float):
-                            setattr(metric, key, float(value))
-                        else:
-                            setattr(metric, key, value)
-                
-                metric.last_updated = datetime.utcnow()
-                employee.performance_score = metric.calculate_overall_score()
-                
-                results["success"] += 1
-                
-            except Exception as e:
-                results["failed"] += 1
-                results["errors"].append(f"Error updating {employee_id}: {str(e)}")
-        
-        db.session.commit()
-        
-        return jsonify({
-            "success": True,
-            "results": results
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route("/api/performance/auto-calculate/<string:employee_id>", methods=["POST"])
-def auto_calculate_metrics(employee_id):
-    """Auto-calculate specific metric scores based on raw data"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    try:
-        data = request.get_json()
-        
-        employee = Employee.query.filter_by(employee_id=employee_id).first()
-        if not employee:
-            return jsonify({"success": False, "error": "Employee not found"}), 404
-        
-        month = data.get("month", datetime.utcnow().strftime("%Y-%m"))
-        metric = get_or_create_performance_metric(employee_id, month)
-        
-        # Auto-calculate attendance score
-        if metric.days_total > 0:
-            attendance_rate = (metric.days_present / metric.days_total) * 100
-            late_penalty = min(metric.late_arrivals * 2, 10)  # 2 points per late arrival, max 10
-            metric.attendance_score = max(0, min(100, attendance_rate - late_penalty))
-        
-        # Auto-calculate task completion score
-        if metric.tasks_assigned > 0:
-            completion_rate = (metric.tasks_completed / metric.tasks_assigned) * 100
-            on_time_bonus = (metric.on_time_completion / 100) * 10  # Up to 10 bonus points
-            metric.task_completion_score = min(100, completion_rate * 0.9 + on_time_bonus)
-        
-        # Auto-calculate quality score
-        quality_base = 100 - (metric.bug_rate * 2)  # Reduce 2 points per 1% bug rate
-        review_bonus = (metric.review_rating / 5) * 10  # Up to 10 bonus points
-        rework_penalty = metric.rework_required * 0.5  # 0.5 points per 1% rework
-        metric.quality_score = max(0, min(100, quality_base + review_bonus - rework_penalty))
-        
-        # Auto-calculate punctuality score
-        meeting_weight = 0.6
-        deadline_weight = 0.4
-        metric.punctuality_score = (
-            metric.meeting_attendance * meeting_weight +
-            metric.deadline_adherence * deadline_weight
-        )
-        
-        # Auto-calculate collaboration score
-        peer_review_score = min(metric.peer_reviews * 5, 30)  # 5 points per review, max 30
-        contribution_score = min(metric.team_contributions * 3, 40)  # 3 points per contribution, max 40
-        communication_score = (metric.communication_rating / 5) * 30  # Max 30 points
-        metric.collaboration_score = min(100, peer_review_score + contribution_score + communication_score)
-        
-        # Auto-calculate productivity score
-        # Normalize based on reasonable targets
-        loc_score = min((metric.lines_of_code / 2000) * 30, 30)  # Target: 2000 LOC
-        commit_score = min((metric.commits / 100) * 40, 40)  # Target: 100 commits
-        story_score = min((metric.story_points / 50) * 30, 30)  # Target: 50 story points
-        metric.productivity_score = min(100, loc_score + commit_score + story_score)
-        
-        # Update timestamp and overall score
-        metric.last_updated = datetime.utcnow()
-        overall_score = metric.calculate_overall_score()
-        employee.performance_score = overall_score
-        
-        db.session.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": "Metrics auto-calculated successfully",
-            "employee_id": employee_id,
-            "overall_score": overall_score,
-            "calculated_metrics": {
-                "attendance_score": metric.attendance_score,
-                "task_completion_score": metric.task_completion_score,
-                "quality_score": metric.quality_score,
-                "punctuality_score": metric.punctuality_score,
-                "collaboration_score": metric.collaboration_score,
-                "productivity_score": metric.productivity_score
-            }
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route("/api/performance/history/<string:employee_id>")
-def get_performance_history(employee_id):
-    """Get performance history for an employee across multiple months"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    try:
-        employee = Employee.query.filter_by(employee_id=employee_id).first()
-        if not employee:
-            return jsonify({"success": False, "error": "Employee not found"}), 404
-        
-        # Get all performance metrics for this employee
-        metrics = PerformanceMetric.query.filter_by(
-            employee_id=employee_id
-        ).order_by(PerformanceMetric.month.desc()).all()
-        
-        history = []
-        for metric in metrics:
-            history.append({
-                "month": metric.month,
-                "overall_score": metric.calculate_overall_score(),
-                "attendance": metric.attendance_score,
-                "task_completion": metric.task_completion_score,
-                "quality": metric.quality_score,
-                "punctuality": metric.punctuality_score,
-                "collaboration": metric.collaboration_score,
-                "productivity": metric.productivity_score,
-                "last_updated": metric.last_updated.isoformat()
-            })
-        
-        return jsonify({
-            "success": True,
-            "employee_id": employee_id,
-            "employee_name": employee.full_name,
-            "history": history
-        }), 200
-        
-    except Exception as e:
         return jsonify({
             "success": False,
             "error": str(e)
