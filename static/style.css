@@ -771,3 +771,63 @@
         50% { box-shadow: 0 4px 25px rgba(102, 126, 234, 0.8); }
         100% { box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); }
     }
+
+   /* Simple Performance Card Styles */
+    .performance-actions {
+        display: flex;
+        gap: 8px;
+        justify-content:flex-end;
+    }
+
+    .perf-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .perf-btn-view {
+        background: #667eea;
+        color: white;
+    }
+
+    .perf-btn-view:hover {
+        opacity: 0.9;
+    }
+
+    .perf-btn-manage {
+        background: #f093fb;
+        color: white;
+    }
+
+    .perf-btn-manage:hover {
+        opacity: 0.9;
+    }
+
+    .perf-icon {
+        font-size: 12px;
+    }
+
+    /* Score status badge */
+    .score-status {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 6px;
+    }
+
+    .status-excellent { background: #10b981; color: white; }
+    .status-good { background: #3b82f6; color: white; }
+    .status-average { background: #f59e0b; color: white; }
+    .status-poor { background: #ef4444; color: white; }
+
+    

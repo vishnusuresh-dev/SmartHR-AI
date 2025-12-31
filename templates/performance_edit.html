@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Performance Metrics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border: 1px solid #ddd;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin: 25px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            background: #fafafa;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+        }
+        .score-display {
+            background: #e8f4f8;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #0066cc;
+        }
+        .score-display h2 {
+            margin: 0 0 10px 0;
+            color: #0066cc;
+        }
+        .calculated-score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0066cc;
+        }
+        .btn {
+            padding: 12px 30px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn-save {
+            background: #28a745;
+            color: white;
+        }
+        .btn-calculate {
+            background: #007bff;
+            color: white;
+        }
+        .btn-back {
+            background: #6c757d;
+            color: white;
+        }
+        .message {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info-text {
+            color: #666;
+            font-size: 13px;
+            font-style: italic;
+        }
+        .row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        @media (max-width: 768px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Performance Metrics Editor</h1>
+        
+        <div id="employeeInfo" style="padding: 15px; background: #e9ecef; margin-bottom: 20px;">
+            <strong>Employee:</strong> <span id="empName">Loading...</span><br>
+            <strong>ID:</strong> <span id="empId">-</span><br>
+            <strong>Department:</strong> <span id="empDept">-</span><br>
+            <strong>Month:</strong> <span id="currentMonth">-</span>
+        </div>
+
+        <div id="messageBox" class="message"></div>
+
+        <!-- Overall Score Display -->
+        <div class="score-display">
+            <h2>Overall Performance Score</h2>
+            <div class="calculated-score" id="overallScore">75.0</div>
+            <p class="info-text">Calculated automatically based on weighted metrics</p>
+        </div>
+
+        <form id="performanceForm">
+            
+            <!-- ATTENDANCE -->
+            <div class="section">
+                <h3>1. Attendance (Weight: 20%)</h3>
+                
+                <div class="form-group">
+                    <label>Attendance Score (0-100):</label>
+                    <input type="number" id="attendance_score" step="0.1" min="0" max="100" value="85">
+                    <span class="info-text">Calculated: Will auto-calculate if you enter raw data below</span>
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>Days Present:</label>
+                        <input type="number" id="days_present" min="0" value="20">
+                    </div>
+                    <div class="form-group">
+                        <label>Total Working Days:</label>
+                        <input type="number" id="days_total" min="1" value="22">
+                    </div>
+                    <div class="form-group">
+                        <label>Late Arrivals:</label>
+                        <input type="number" id="late_arrivals" min="0" value="0">
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-calculate" onclick="autoCalcAttendance()">
+                    Auto-Calculate Attendance Score
+                </button>
+            </div>
+
+            <!-- TASK COMPLETION -->
+            <div class="section">
+                <h3>2. Task Completion (Weight: 25%)</h3>
+                
+                <div class="form-group">
+                    <label>Task Completion Score (0-100):</label>
+                    <input type="number" id="task_completion_score" step="0.1" min="0" max="100" value="80">
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>Tasks Completed:</label>
+                        <input type="number" id="tasks_completed" min="0" value="30">
+                    </div>
+                    <div class="form-group">
+                        <label>Tasks Assigned:</label>
+                        <input type="number" id="tasks_assigned" min="0" value="35">
+                    </div>
+                    <div class="form-group">
+                        <label>On-Time Completion %:</label>
+                        <input type="number" id="on_time_completion" step="0.1" min="0" max="100" value="90">
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-calculate" onclick="autoCalcTasks()">
+                    Auto-Calculate Task Score
+                </button>
+            </div>
+
+            <!-- QUALITY -->
+            <div class="section">
+                <h3>3. Quality (Weight: 20%)</h3>
+                
+                <div class="form-group">
+                    <label>Quality Score (0-100):</label>
+                    <input type="number" id="quality_score" step="0.1" min="0" max="100" value="85">
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>Bug Rate %:</label>
+                        <input type="number" id="bug_rate" step="0.1" min="0" max="100" value="2">
+                    </div>
+                    <div class="form-group">
+                        <label>Review Rating (0-5):</label>
+                        <input type="number" id="review_rating" step="0.1" min="0" max="5" value="4">
+                    </div>
+                    <div class="form-group">
+                        <label>Rework Required %:</label>
+                        <input type="number" id="rework_required" step="0.1" min="0" max="100" value="5">
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-calculate" onclick="autoCalcQuality()">
+                    Auto-Calculate Quality Score
+                </button>
+            </div>
+
+            <!-- PUNCTUALITY -->
+            <div class="section">
+                <h3>4. Punctuality (Weight: 15%)</h3>
+                
+                <div class="form-group">
+                    <label>Punctuality Score (0-100):</label>
+                    <input type="number" id="punctuality_score" step="0.1" min="0" max="100" value="90">
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>Meeting Attendance %:</label>
+                        <input type="number" id="meeting_attendance" step="0.1" min="0" max="100" value="95">
+                    </div>
+                    <div class="form-group">
+                        <label>Deadline Adherence %:</label>
+                        <input type="number" id="deadline_adherence" step="0.1" min="0" max="100" value="90">
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-calculate" onclick="autoCalcPunctuality()">
+                    Auto-Calculate Punctuality Score
+                </button>
+            </div>
+
+            <!-- COLLABORATION -->
+            <div class="section">
+                <h3>5. Collaboration (Weight: 10%)</h3>
+                
+                <div class="form-group">
+                    <label>Collaboration Score (0-100):</label>
+                    <input type="number" id="collaboration_score" step="0.1" min="0" max="100" value="85">
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>Peer Reviews:</label>
+                        <input type="number" id="peer_reviews" min="0" value="10">
+                    </div>
+                    <div class="form-group">
+                        <label>Team Contributions:</label>
+                        <input type="number" id="team_contributions" min="0" value="20">
+                    </div>
+                    <div class="form-group">
+                        <label>Communication Rating (0-5):</label>
+                        <input type="number" id="communication_rating" step="0.1" min="0" max="5" value="4">
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-calculate" onclick="autoCalcCollaboration()">
+                    Auto-Calculate Collaboration Score
+                </button>
+            </div>
+
+            <!-- PRODUCTIVITY -->
+            <div class="section">
+                <h3>6. Productivity (Weight: 10%)</h3>
+                
+                <div class="form-group">
+                    <label>Productivity Score (0-100):</label>
+                    <input type="number" id="productivity_score" step="0.1" min="0" max="100" value="80">
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label>Lines of Code:</label>
+                        <input type="number" id="lines_of_code" min="0" value="1000">
+                    </div>
+                    <div class="form-group">
+                        <label>Commits:</label>
+                        <input type="number" id="commits" min="0" value="50">
+                    </div>
+                    <div class="form-group">
+                        <label>Story Points:</label>
+                        <input type="number" id="story_points" min="0" value="25">
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-calculate" onclick="autoCalcProductivity()">
+                    Auto-Calculate Productivity Score
+                </button>
+            </div>
+
+            <!-- NOTES -->
+            <div class="section">
+                <h3>Additional Notes</h3>
+                <textarea id="notes" style="width: 100%; padding: 10px; font-size: 14px;" rows="4" 
+                          placeholder="Add any comments or observations about performance..."></textarea>
+            </div>
+
+            <!-- ACTION BUTTONS -->
+            <div style="text-align: center; margin-top: 30px;">
+                <button type="button" class="btn btn-calculate" onclick="calculateAll()">
+                    Calculate All Scores
+                </button>
+                <button type="button" class="btn btn-save" onclick="savePerformance()">
+                    SAVE TO DATABASE
+                </button>
+                <button type="button" class="btn btn-back" onclick="goBack()">
+                    Back to List
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        // Get employee ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const employeeId = urlParams.get('id') || '{{ employee.employee_id }}';
+
+        // Load employee data on page load
+        window.addEventListener('DOMContentLoaded', loadEmployeeData);
+
+        // Auto-calculate overall score when any input changes
+        document.getElementById('performanceForm').addEventListener('input', calculateOverallScore);
+
+        async function loadEmployeeData() {
+            try {
+                // Fetch employee and metric data
+                const response = await fetch(`/api/performance/get/${employeeId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    // Populate employee info
+                    document.getElementById('empName').textContent = data.employee.full_name;
+                    document.getElementById('empId').textContent = data.employee.employee_id;
+                    document.getElementById('empDept').textContent = data.employee.department || 'N/A';
+                    document.getElementById('currentMonth').textContent = data.metric.month;
+
+                    // Populate form with existing data
+                    const m = data.metric.metrics;
+                    
+                    // Attendance
+                    document.getElementById('attendance_score').value = m.attendance.score;
+                    document.getElementById('days_present').value = m.attendance.days_present;
+                    document.getElementById('days_total').value = m.attendance.days_total;
+                    document.getElementById('late_arrivals').value = m.attendance.late_arrivals;
+
+                    // Tasks
+                    document.getElementById('task_completion_score').value = m.task_completion.score;
+                    document.getElementById('tasks_completed').value = m.task_completion.tasks_completed;
+                    document.getElementById('tasks_assigned').value = m.task_completion.tasks_assigned;
+                    document.getElementById('on_time_completion').value = m.task_completion.on_time_completion;
+
+                    // Quality
+                    document.getElementById('quality_score').value = m.quality.score;
+                    document.getElementById('bug_rate').value = m.quality.bug_rate;
+                    document.getElementById('review_rating').value = m.quality.review_rating;
+                    document.getElementById('rework_required').value = m.quality.rework_required;
+
+                    // Punctuality
+                    document.getElementById('punctuality_score').value = m.punctuality.score;
+                    document.getElementById('meeting_attendance').value = m.punctuality.meeting_attendance;
+                    document.getElementById('deadline_adherence').value = m.punctuality.deadline_adherence;
+
+                    // Collaboration
+                    document.getElementById('collaboration_score').value = m.collaboration.score;
+                    document.getElementById('peer_reviews').value = m.collaboration.peer_reviews;
+                    document.getElementById('team_contributions').value = m.collaboration.team_contributions;
+                    document.getElementById('communication_rating').value = m.collaboration.communication_rating;
+
+                    // Productivity
+                    document.getElementById('productivity_score').value = m.productivity.score;
+                    document.getElementById('lines_of_code').value = m.productivity.lines_of_code;
+                    document.getElementById('commits').value = m.productivity.commits;
+                    document.getElementById('story_points').value = m.productivity.story_points;
+
+                    // Notes
+                    document.getElementById('notes').value = data.metric.notes || '';
+
+                    calculateOverallScore();
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showMessage('Error loading employee data', 'error');
+            }
+        }
+
+        function autoCalcAttendance() {
+            const present = parseFloat(document.getElementById('days_present').value) || 0;
+            const total = parseFloat(document.getElementById('days_total').value) || 1;
+            const late = parseFloat(document.getElementById('late_arrivals').value) || 0;
+
+            const rate = (present / total) * 100;
+            const latePenalty = Math.min(late * 2, 10);
+            const score = Math.max(0, Math.min(100, rate - latePenalty));
+
+            document.getElementById('attendance_score').value = score.toFixed(1);
+            calculateOverallScore();
+        }
+
+        function autoCalcTasks() {
+            const completed = parseFloat(document.getElementById('tasks_completed').value) || 0;
+            const assigned = parseFloat(document.getElementById('tasks_assigned').value) || 1;
+            const onTime = parseFloat(document.getElementById('on_time_completion').value) || 0;
+
+            const completionRate = (completed / assigned) * 100;
+            const onTimeBonus = (onTime / 100) * 10;
+            const score = Math.min(100, completionRate * 0.9 + onTimeBonus);
+
+            document.getElementById('task_completion_score').value = score.toFixed(1);
+            calculateOverallScore();
+        }
+
+        function autoCalcQuality() {
+            const bugRate = parseFloat(document.getElementById('bug_rate').value) || 0;
+            const reviewRating = parseFloat(document.getElementById('review_rating').value) || 0;
+            const rework = parseFloat(document.getElementById('rework_required').value) || 0;
+
+            const qualityBase = 100 - (bugRate * 2);
+            const reviewBonus = (reviewRating / 5) * 10;
+            const reworkPenalty = rework * 0.5;
+            const score = Math.max(0, Math.min(100, qualityBase + reviewBonus - reworkPenalty));
+
+            document.getElementById('quality_score').value = score.toFixed(1);
+            calculateOverallScore();
+        }
+
+        function autoCalcPunctuality() {
+            const meeting = parseFloat(document.getElementById('meeting_attendance').value) || 0;
+            const deadline = parseFloat(document.getElementById('deadline_adherence').value) || 0;
+
+            const score = meeting * 0.6 + deadline * 0.4;
+
+            document.getElementById('punctuality_score').value = score.toFixed(1);
+            calculateOverallScore();
+        }
+
+        function autoCalcCollaboration() {
+            const peerReviews = parseFloat(document.getElementById('peer_reviews').value) || 0;
+            const contributions = parseFloat(document.getElementById('team_contributions').value) || 0;
+            const commRating = parseFloat(document.getElementById('communication_rating').value) || 0;
+
+            const reviewScore = Math.min(peerReviews * 5, 30);
+            const contribScore = Math.min(contributions * 3, 40);
+            const commScore = (commRating / 5) * 30;
+            const score = Math.min(100, reviewScore + contribScore + commScore);
+
+            document.getElementById('collaboration_score').value = score.toFixed(1);
+            calculateOverallScore();
+        }
+
+        function autoCalcProductivity() {
+            const loc = parseFloat(document.getElementById('lines_of_code').value) || 0;
+            const commits = parseFloat(document.getElementById('commits').value) || 0;
+            const points = parseFloat(document.getElementById('story_points').value) || 0;
+
+            const locScore = Math.min((loc / 2000) * 30, 30);
+            const commitScore = Math.min((commits / 100) * 40, 40);
+            const storyScore = Math.min((points / 50) * 30, 30);
+            const score = Math.min(100, locScore + commitScore + storyScore);
+
+            document.getElementById('productivity_score').value = score.toFixed(1);
+            calculateOverallScore();
+        }
+
+        function calculateAll() {
+            autoCalcAttendance();
+            autoCalcTasks();
+            autoCalcQuality();
+            autoCalcPunctuality();
+            autoCalcCollaboration();
+            autoCalcProductivity();
+            showMessage('All scores calculated!', 'success');
+        }
+
+        function calculateOverallScore() {
+            const weights = {
+                attendance: 0.20,
+                task_completion: 0.25,
+                quality: 0.20,
+                punctuality: 0.15,
+                collaboration: 0.10,
+                productivity: 0.10
+            };
+
+            const scores = {
+                attendance: parseFloat(document.getElementById('attendance_score').value) || 0,
+                task_completion: parseFloat(document.getElementById('task_completion_score').value) || 0,
+                quality: parseFloat(document.getElementById('quality_score').value) || 0,
+                punctuality: parseFloat(document.getElementById('punctuality_score').value) || 0,
+                collaboration: parseFloat(document.getElementById('collaboration_score').value) || 0,
+                productivity: parseFloat(document.getElementById('productivity_score').value) || 0
+            };
+
+            let overall = 0;
+            for (let key in scores) {
+                overall += scores[key] * weights[key];
+            }
+
+            document.getElementById('overallScore').textContent = overall.toFixed(1);
+        }
+
+        async function savePerformance() {
+            const formData = {
+                month: document.getElementById('currentMonth').textContent,
+                attendance_score: parseFloat(document.getElementById('attendance_score').value),
+                days_present: parseInt(document.getElementById('days_present').value),
+                days_total: parseInt(document.getElementById('days_total').value),
+                late_arrivals: parseInt(document.getElementById('late_arrivals').value),
+                task_completion_score: parseFloat(document.getElementById('task_completion_score').value),
+                tasks_completed: parseInt(document.getElementById('tasks_completed').value),
+                tasks_assigned: parseInt(document.getElementById('tasks_assigned').value),
+                on_time_completion: parseFloat(document.getElementById('on_time_completion').value),
+                quality_score: parseFloat(document.getElementById('quality_score').value),
+                bug_rate: parseFloat(document.getElementById('bug_rate').value),
+                review_rating: parseFloat(document.getElementById('review_rating').value),
+                rework_required: parseFloat(document.getElementById('rework_required').value),
+                punctuality_score: parseFloat(document.getElementById('punctuality_score').value),
+                meeting_attendance: parseFloat(document.getElementById('meeting_attendance').value),
+                deadline_adherence: parseFloat(document.getElementById('deadline_adherence').value),
+                collaboration_score: parseFloat(document.getElementById('collaboration_score').value),
+                peer_reviews: parseInt(document.getElementById('peer_reviews').value),
+                team_contributions: parseInt(document.getElementById('team_contributions').value),
+                communication_rating: parseFloat(document.getElementById('communication_rating').value),
+                productivity_score: parseFloat(document.getElementById('productivity_score').value),
+                lines_of_code: parseInt(document.getElementById('lines_of_code').value),
+                commits: parseInt(document.getElementById('commits').value),
+                story_points: parseInt(document.getElementById('story_points').value),
+                notes: document.getElementById('notes').value
+            };
+
+            try {
+                const response = await fetch(`/api/performance/update/${employeeId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('✓ Performance data saved successfully! AI will now use this updated data.', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/performance/list';
+                    }, 2000);
+                } else {
+                    showMessage('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        function showMessage(text, type) {
+            const box = document.getElementById('messageBox');
+            box.textContent = text;
+            box.className = 'message ' + type;
+            box.style.display = 'block';
+            setTimeout(() => {
+                box.style.display = 'none';
+            }, 5000);
+        }
+
+        function goBack() {
+            window.location.href = '/performance/list';
+        }
+    </script>
+</body>
+</html>
