@@ -1228,6 +1228,616 @@ def ai_reset():
         "success": True,
         "message": "Chat session reset"
     }), 200
+
+# Add these routes to your app.py
+
+# ======================================================
+# AI-POWERED LEARNING PATH ROUTES
+# ======================================================
+
+@app.route("/learning-paths")
+def learning_paths():
+    """Learning paths dashboard showing all employees"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    employees = Employee.query.all()
+    
+    return render_template(
+        "learning_paths.html",
+        employees=employees,
+        total_employees=len(employees)
+    )
+
+
+@app.route("/learning-paths/employee/<string:employee_id>")
+def employee_learning_path(employee_id):
+    """Personalized AI-powered learning path for a specific employee"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    employee = Employee.query.filter_by(employee_id=employee_id).first_or_404()
+    
+    # Get employee's projects
+    projects = get_employee_projects(employee_id)
+    
+    # Get performance metrics
+    metrics = calculate_performance_metrics(employee)
+    
+    return render_template(
+        "employee_learning_detail.html",
+        employee=employee,
+        projects=projects,
+        metrics=metrics
+    )
+
+
+@app.route("/api/learning/analyze-employee", methods=["POST"])
+def analyze_employee_learning():
+    """AI-powered complete employee skill gap analysis"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    employee_id = data.get("employee_id")
+    
+    if not employee_id:
+        return jsonify({"success": False, "error": "Employee ID required"}), 400
+    
+    employee = Employee.query.filter_by(employee_id=employee_id).first()
+    if not employee:
+        return jsonify({"success": False, "error": "Employee not found"}), 404
+    
+    try:
+        # Get AI-powered skill gap analysis
+        analysis = ai_analyze_employee_skills(employee)
+        
+        return jsonify({
+            "success": True,
+            "analysis": analysis
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in learning analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/learning/get-courses", methods=["POST"])
+def get_ai_courses():
+    """Get AI-powered course recommendations with real links"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    employee_id = data.get("employee_id")
+    focus_area = data.get("focus_area", "all")  # critical, recommended, future, or all
+    
+    if not employee_id:
+        return jsonify({"success": False, "error": "Employee ID required"}), 400
+    
+    employee = Employee.query.filter_by(employee_id=employee_id).first()
+    if not employee:
+        return jsonify({"success": False, "error": "Employee not found"}), 404
+    
+    try:
+        # Get AI-powered course recommendations
+        recommendations = ai_get_course_recommendations(employee, focus_area)
+        
+        return jsonify({
+            "success": True,
+            "recommendations": recommendations
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting courses: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/learning/ai-chat", methods=["POST"])
+def learning_ai_chat():
+    """AI chat for personalized learning guidance"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    employee_id = data.get("employee_id")
+    question = data.get("question", "").strip()
+    
+    if not employee_id or not question:
+        return jsonify({"success": False, "error": "Employee ID and question required"}), 400
+    
+    employee = Employee.query.filter_by(employee_id=employee_id).first()
+    if not employee:
+        return jsonify({"success": False, "error": "Employee not found"}), 404
+    
+    try:
+        # Get AI response with full employee context
+        response = ai_learning_chat(employee, question)
+        
+        return jsonify({
+            "success": True,
+            "response": response
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in AI chat: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/learning/organization-insights", methods=["GET"])
+def get_organization_insights():
+    """Get AI-powered organization-wide skill gap insights"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        insights = ai_analyze_organization()
+        
+        return jsonify({
+            "success": True,
+            "insights": insights
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting insights: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ======================================================
+# AI-POWERED HELPER FUNCTIONS
+# ======================================================
+
+def ai_analyze_employee_skills(employee):
+    """Use AI to analyze employee's skill gaps and learning needs"""
+    
+    # Get employee context
+    projects = get_employee_projects(employee.employee_id)
+    metrics = calculate_performance_metrics(employee)
+    
+    # Get all projects in organization for context
+    all_projects = Project.query.all()
+    org_skills_needed = set()
+    for proj in all_projects:
+        # Extract skills from project descriptions
+        if proj.description:
+            org_skills_needed.add(proj.description)
+    
+    # Initialize LLM
+    llm = ChatOllama(model=LLM_MODEL, temperature=0.2)
+    
+    # Build comprehensive analysis prompt
+    prompt = f"""You are an expert HR Learning & Development AI analyzing employee skill gaps.
+
+EMPLOYEE DATA:
+Name: {employee.full_name}
+Role: {employee.job_title or 'Not specified'}
+Department: {employee.department or 'Not specified'}
+Experience: {employee.total_exp or 0} years
+Performance Score: {employee.performance_score}/100
+
+CURRENT SKILLS:
+{json.dumps(employee.skills, indent=2) if employee.skills else 'No skills recorded'}
+
+ACTIVE PROJECTS ({len(projects)}):
+{json.dumps([{'name': p['name'], 'role': p['role'], 'status': p['status']} for p in projects], indent=2) if projects else 'No active projects'}
+
+PERFORMANCE METRICS:
+- Attendance: {metrics['attendance']}%
+- Task Completion: {metrics['task_completion']}%
+- Quality: {metrics['quality']}%
+- Productivity: {metrics['productivity']}%
+- Punctuality: {metrics['punctuality']}%
+
+ORGANIZATION CONTEXT:
+- Total Active Projects: {len(all_projects)}
+- Industry: Software Development
+- Current Year: 2025
+
+ANALYSIS TASK:
+Based on:
+1. Employee's current skills vs. their role requirements
+2. Performance metrics indicating areas needing improvement
+3. Active projects requiring specific technical skills
+4. 2025 market trends for {employee.job_title or 'software professionals'}
+5. Career progression path from {employee.job_title or 'current role'}
+
+Provide a detailed JSON analysis with:
+{{
+  "skill_gaps": {{
+    "critical": [
+      {{
+        "skill": "skill name",
+        "reason": "why it's critical (relate to their projects/performance)",
+        "priority": "High/Medium/Low",
+        "impact": "specific impact on their work",
+        "current_level": "None/Beginner/Intermediate",
+        "target_level": "Intermediate/Advanced/Expert"
+      }}
+    ],
+    "recommended": [similar structure for nice-to-have skills],
+    "future": [similar structure for career growth skills]
+  }},
+  "performance_insights": {{
+    "strengths": ["what they're good at based on performance"],
+    "improvement_areas": ["what needs work based on metrics"],
+    "learning_style_recommendation": "self-paced/structured/hands-on/etc"
+  }},
+  "career_path": {{
+    "current_stage": "description",
+    "next_role": "potential next role",
+    "skills_for_progression": ["skills needed"]
+  }},
+  "urgency": "Low/Medium/High/Critical",
+  "recommended_learning_hours_per_week": 5
+}}
+
+IMPORTANT: 
+- Be specific about WHY each skill is needed
+- Connect skill gaps to actual performance metrics
+- Consider their current workload ({len(projects)} projects)
+- Prioritize skills that will immediately help their performance
+- Consider 2025 industry trends
+
+Respond with ONLY the JSON, no explanations:"""
+
+    try:
+        response = llm.invoke(prompt)
+        result = response.content.strip()
+        
+        # Clean up response (remove markdown if present)
+        result = result.replace('```json', '').replace('```', '').strip()
+        
+        # Parse JSON
+        analysis = json.loads(result)
+        
+        # Add employee info
+        analysis["employee"] = {
+            "id": employee.employee_id,
+            "name": employee.full_name,
+            "role": employee.job_title,
+            "department": employee.department,
+            "performance": employee.performance_score
+        }
+        
+        return analysis
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON parsing error: {e}")
+        print(f"Raw AI response: {result[:500]}")
+        # Return a basic structure if AI response fails
+        return {
+            "error": "Failed to parse AI response",
+            "skill_gaps": {"critical": [], "recommended": [], "future": []},
+            "urgency": "Medium"
+        }
+    except Exception as e:
+        print(f"AI analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+def ai_get_course_recommendations(employee, focus_area="all"):
+    """Get AI-powered course recommendations with REAL course links"""
+    
+    # First, get skill gap analysis
+    analysis = ai_analyze_employee_skills(employee)
+    
+    # Initialize LLM
+    llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
+    
+    # Determine which skills to focus on
+    if focus_area == "critical":
+        skills_to_learn = analysis["skill_gaps"]["critical"][:3]
+        priority_level = "immediate need"
+    elif focus_area == "recommended":
+        skills_to_learn = analysis["skill_gaps"]["recommended"][:3]
+        priority_level = "recommended development"
+    elif focus_area == "future":
+        skills_to_learn = analysis["skill_gaps"]["future"][:3]
+        priority_level = "future growth"
+    else:
+        # All - take top items from each category
+        skills_to_learn = (
+            analysis["skill_gaps"]["critical"][:2] +
+            analysis["skill_gaps"]["recommended"][:2] +
+            analysis["skill_gaps"]["future"][:1]
+        )
+        priority_level = "comprehensive development"
+    
+    # Build course recommendation prompt
+    prompt = f"""You are an expert course curator. Find REAL, SPECIFIC courses from major platforms.
+
+EMPLOYEE PROFILE:
+Name: {employee.full_name}
+Role: {employee.job_title}
+Current Level: {employee.total_exp} years experience
+Performance: {employee.performance_score}/100
+
+SKILLS NEEDED ({priority_level}):
+{json.dumps(skills_to_learn, indent=2)}
+
+TASK: Provide 5-7 REAL courses from these platforms:
+- Udemy (udemy.com/course/[exact-course-name])
+- Coursera (coursera.org/learn/[course-name])
+- Pluralsight (pluralsight.com/courses/[course-name])
+- LinkedIn Learning (linkedin.com/learning/[course-name])
+- edX (edx.org/course/[course-name])
+- FreeCodeCamp (freecodecamp.org/learn)
+- YouTube (search for specific playlists)
+
+For each course, provide:
+{{
+  "courses": [
+    {{
+      "title": "REAL course name",
+      "platform": "Udemy/Coursera/etc",
+      "instructor": "instructor name if known",
+      "skill_focus": "which skill gap this addresses",
+      "level": "Beginner/Intermediate/Advanced",
+      "duration": "estimated hours",
+      "rating": "4.5/5 or similar if known",
+      "price": "Free/Paid/$amount",
+      "url": "https://www.[actual-platform].com/course/[real-course-slug]/",
+      "why_recommended": "specific reason based on their skill gap",
+      "expected_outcome": "what they'll achieve",
+      "prerequisites": ["if any"],
+      "key_topics": ["main topics covered"]
+    }}
+  ],
+  "learning_path": {{
+    "start_with": "course title to start",
+    "then": "next course",
+    "finally": "advanced course",
+    "total_duration": "X weeks",
+    "time_per_week": "Y hours"
+  }}
+}}
+
+CRITICAL REQUIREMENTS:
+1. Use REAL course names (search your knowledge for popular courses)
+2. Include COMPLETE URLs (full course slugs)
+3. Mix free and paid options
+4. Prioritize highly-rated courses (4.5+)
+5. Match to their current experience level
+6. Provide logical progression
+7. Be specific about why each course helps them
+
+Example REAL courses to give you an idea:
+- Udemy: "The Complete Web Developer Course 2.0" by Rob Percival
+- Coursera: "Machine Learning" by Andrew Ng
+- FreeCodeCamp: "Responsive Web Design Certification"
+
+Respond with ONLY JSON, no markdown:"""
+
+    try:
+        response = llm.invoke(prompt)
+        result = response.content.strip()
+        
+        # Clean response
+        result = result.replace('```json', '').replace('```', '').strip()
+        
+        # Parse JSON
+        recommendations = json.loads(result)
+        
+        # Add context
+        recommendations["employee_context"] = {
+            "name": employee.full_name,
+            "focus_area": focus_area,
+            "skill_gaps_addressed": [s.get("skill", "Unknown") for s in skills_to_learn]
+        }
+        
+        return recommendations
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON parsing error: {e}")
+        print(f"Raw AI response: {result[:500]}")
+        return {
+            "error": "Failed to parse course recommendations",
+            "courses": []
+        }
+    except Exception as e:
+        print(f"AI course recommendation error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+def ai_learning_chat(employee, question):
+    """AI-powered chat for learning guidance"""
+    
+    # Get employee context
+    projects = get_employee_projects(employee.employee_id)
+    metrics = calculate_performance_metrics(employee)
+    analysis = ai_analyze_employee_skills(employee)
+    
+    # Initialize LLM
+    llm = ChatOllama(model=LLM_MODEL, temperature=0.4)
+    
+    prompt = f"""You are a personal Learning & Development coach for {employee.full_name}.
+
+EMPLOYEE PROFILE:
+Role: {employee.job_title}
+Department: {employee.department}
+Experience: {employee.total_exp} years
+Performance Score: {employee.performance_score}/100
+
+CURRENT SKILLS:
+{json.dumps(employee.skills, indent=2) if employee.skills else 'No skills recorded'}
+
+SKILL GAP ANALYSIS:
+{json.dumps(analysis.get('skill_gaps', {}), indent=2)}
+
+PERFORMANCE METRICS:
+{json.dumps(metrics, indent=2)}
+
+ACTIVE PROJECTS:
+{json.dumps(projects, indent=2) if projects else 'No active projects'}
+
+USER QUESTION: {question}
+
+INSTRUCTIONS:
+- Provide personalized, actionable advice
+- Reference their specific skills, projects, and performance
+- Suggest concrete learning resources when relevant
+- Be encouraging and supportive
+- If they ask for courses, provide specific real courses with platforms
+- Keep response conversational but professional
+- Format with emojis and clear sections for readability
+
+Respond as their personal learning coach:"""
+
+    try:
+        response = llm.invoke(prompt)
+        return response.content.strip()
+        
+    except Exception as e:
+        print(f"AI chat error: {e}")
+        return f"I apologize, but I'm having trouble processing your question right now. Error: {str(e)}"
+
+
+def ai_analyze_organization():
+    """AI-powered organization-wide skill gap analysis"""
+    
+    employees = Employee.query.all()
+    projects = Project.query.all()
+    
+    # Gather organization data
+    org_data = {
+        "total_employees": len(employees),
+        "departments": {},
+        "roles": {},
+        "avg_performance": sum(e.performance_score or 0 for e in employees) / len(employees) if employees else 0,
+        "total_projects": len(projects),
+        "skills_distribution": {}
+    }
+    
+    # Aggregate data
+    for emp in employees:
+        # Count by department
+        dept = emp.department or "Unassigned"
+        org_data["departments"][dept] = org_data["departments"].get(dept, 0) + 1
+        
+        # Count by role
+        role = emp.job_title or "Unknown"
+        org_data["roles"][role] = org_data["roles"].get(role, 0) + 1
+        
+        # Skills distribution
+        if emp.skills:
+            for skill in emp.skills.keys():
+                org_data["skills_distribution"][skill] = org_data["skills_distribution"].get(skill, 0) + 1
+    
+    # Initialize LLM
+    llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
+    
+    prompt = f"""You are an organizational development expert analyzing company-wide skill gaps.
+
+ORGANIZATION DATA:
+{json.dumps(org_data, indent=2)}
+
+ANALYSIS TASK:
+Provide strategic insights for HR/L&D planning:
+
+{{
+  "overall_health": {{
+    "score": "1-100",
+    "assessment": "brief overall assessment"
+  }},
+  "critical_skill_gaps": [
+    {{
+      "skill": "skill name",
+      "gap_severity": "High/Medium/Low",
+      "employees_needed": "number",
+      "impact": "business impact",
+      "recommended_action": "specific action"
+    }}
+  ],
+  "department_insights": {{
+    "department_name": {{
+      "strength": "what they're good at",
+      "weakness": "what needs improvement",
+      "priority_training": ["skills to focus on"]
+    }}
+  }},
+  "hiring_recommendations": [
+    {{
+      "role": "role to hire",
+      "reason": "why",
+      "priority": "High/Medium/Low"
+    }}
+  ]],
+  "training_budget_allocation": {{
+    "department": "percentage"
+  }},
+  "trends": {{
+    "positive": ["good trends"],
+    "concerns": ["areas of concern"]
+  }}
+}}
+
+Consider:
+- Current skill distribution vs. project demands
+- Performance levels across organization
+- 2025 industry trends
+- Scalability and growth
+
+Respond with ONLY JSON:"""
+
+    try:
+        response = llm.invoke(prompt)
+        result = response.content.strip()
+        result = result.replace('```json', '').replace('```', '').strip()
+        
+        insights = json.loads(result)
+        insights["generated_at"] = datetime.utcnow().isoformat()
+        
+        return insights
+        
+    except Exception as e:
+        print(f"Organization analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
+def get_employee_projects(employee_id):
+    """Get detailed project information for employee"""
+    memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+    projects = []
+    
+    for m in memberships:
+        project = Project.query.get(m.project_id)
+        if project:
+            team_size = ProjectMember.query.filter_by(project_id=project.id).count()
+            projects.append({
+                "id": project.id,
+                "name": project.name,
+                "code": project.project_code,
+                "description": project.description,
+                "role": m.role,
+                "status": project.status,
+                "team_size": team_size
+            })
+    
+    return projects
 # ======================================================
 # HELPER FUNCTIONS FOR DATA PREPARATION
 # ======================================================
