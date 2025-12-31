@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart HR Learning Path - AI Powered</title>
+    <title>Smart HR Learning Path - UI Demo</title>
     <style>
         * {
             margin: 0;
@@ -96,10 +96,6 @@
         .learning-paths::-webkit-scrollbar-thumb {
             background: #e0e7ff;
             border-radius: 3px;
-        }
-        
-        .learning-paths::-webkit-scrollbar-thumb:hover {
-            background: #c7d2fe;
         }
         
         .path-category {
@@ -197,7 +193,7 @@
             margin-left: 52px;
         }
         
-        /* Main Area Styles */
+        /* Main Area */
         .main-area {
             background: white;
             border-radius: 20px;
@@ -386,128 +382,6 @@
             font-weight: 600;
         }
         
-        /* Message Styles */
-        .message {
-            margin-bottom: 24px;
-            display: flex;
-            gap: 16px;
-            animation: slideIn 0.3s ease-out;
-        }
-        
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .message.user {
-            flex-direction: row-reverse;
-        }
-        
-        .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .message.user .avatar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        
-        .message.ai .avatar {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        }
-        
-        .message-content {
-            max-width: 75%;
-            padding: 16px 20px;
-            border-radius: 16px;
-            font-size: 15px;
-            line-height: 1.7;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        
-        .message.user .message-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 16px 16px 4px 16px;
-        }
-        
-        .message.ai .message-content {
-            background: white;
-            color: #1f2937;
-            border: 1px solid #e5e7eb;
-            border-radius: 16px 16px 16px 4px;
-        }
-        
-        .message-content a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-            border-bottom: 2px solid transparent;
-            transition: border-color 0.2s;
-        }
-        
-        .message.user .message-content a {
-            color: white;
-            border-bottom-color: rgba(255,255,255,0.5);
-        }
-        
-        .message-content a:hover {
-            border-bottom-color: currentColor;
-        }
-        
-        /* Typing Indicator */
-        .typing {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            padding: 16px;
-            animation: slideIn 0.3s ease-out;
-        }
-        
-        .typing .avatar {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        }
-        
-        .typing-dots {
-            display: flex;
-            gap: 6px;
-            padding: 16px 20px;
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 16px 16px 16px 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        
-        .dot {
-            width: 8px;
-            height: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out;
-        }
-        
-        .dot:nth-child(1) { animation-delay: 0s; }
-        .dot:nth-child(2) { animation-delay: 0.2s; }
-        .dot:nth-child(3) { animation-delay: 0.4s; }
-        
-        @keyframes bounce {
-            0%, 60%, 100% { transform: translateY(0); }
-            30% { transform: translateY(-10px); }
-        }
-        
         /* Input Area */
         .input-area {
             padding: 24px 30px;
@@ -563,15 +437,9 @@
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
         
-        .send-btn:hover:not(:disabled) {
+        .send-btn:hover {
             transform: scale(1.05);
             box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-        }
-        
-        .send-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: scale(1);
         }
         
         /* Responsive */
@@ -600,15 +468,12 @@
                 flex-direction: column;
                 gap: 20px;
             }
-            
-            .message-content {
-                max-width: 85%;
-            }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
                 <h2>📚 Learning Hub</h2>
@@ -619,80 +484,113 @@
                 </div>
             </div>
             <div class="learning-paths">
+                <!-- Development Category -->
                 <div class="path-category">
                     <div class="category-label">Development</div>
-                    <div class="path-item active" onclick="selectPath('Frontend Development')">
+                    <div class="path-item active">
                         <div class="path-item-header">
                             <div class="path-icon">🎨</div>
                             <h3>Frontend Dev</h3>
                         </div>
                         <p>React, Vue, TypeScript</p>
                     </div>
-                    <div class="path-item" onclick="selectPath('Backend Development')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">⚙️</div>
                             <h3>Backend Dev</h3>
                         </div>
                         <p>Node.js, Python, APIs</p>
                     </div>
-                    <div class="path-item" onclick="selectPath('Mobile Development')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">📱</div>
                             <h3>Mobile Dev</h3>
                         </div>
                         <p>React Native, Flutter</p>
                     </div>
+                    <div class="path-item">
+                        <div class="path-item-header">
+                            <div class="path-icon">🌐</div>
+                            <h3>Full Stack</h3>
+                        </div>
+                        <p>MERN, MEAN Stack</p>
+                    </div>
                 </div>
                 
+                <!-- Cloud & DevOps Category -->
                 <div class="path-category">
                     <div class="category-label">Cloud & DevOps</div>
-                    <div class="path-item" onclick="selectPath('DevOps and Cloud')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">🚀</div>
                             <h3>DevOps & Cloud</h3>
                         </div>
                         <p>AWS, Docker, Kubernetes</p>
                     </div>
+                    <div class="path-item">
+                        <div class="path-item-header">
+                            <div class="path-icon">☁️</div>
+                            <h3>Cloud Architect</h3>
+                        </div>
+                        <p>Azure, GCP, Multi-cloud</p>
+                    </div>
                 </div>
                 
+                <!-- AI & Data Category -->
                 <div class="path-category">
                     <div class="category-label">AI & Data</div>
-                    <div class="path-item" onclick="selectPath('AI and Machine Learning')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">🤖</div>
                             <h3>AI & ML</h3>
                         </div>
                         <p>Python, TensorFlow</p>
                     </div>
-                    <div class="path-item" onclick="selectPath('Data Science')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">📊</div>
                             <h3>Data Science</h3>
                         </div>
                         <p>Python, SQL, Analytics</p>
                     </div>
+                    <div class="path-item">
+                        <div class="path-item-header">
+                            <div class="path-icon">🧠</div>
+                            <h3>Deep Learning</h3>
+                        </div>
+                        <p>Neural Networks, NLP</p>
+                    </div>
                 </div>
                 
+                <!-- Specialized Category -->
                 <div class="path-category">
                     <div class="category-label">Specialized</div>
-                    <div class="path-item" onclick="selectPath('Cybersecurity')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">🔒</div>
                             <h3>Cybersecurity</h3>
                         </div>
                         <p>Ethical Hacking, Security</p>
                     </div>
-                    <div class="path-item" onclick="selectPath('Game Development')">
+                    <div class="path-item">
                         <div class="path-item-header">
                             <div class="path-icon">🎮</div>
                             <h3>Game Dev</h3>
                         </div>
                         <p>Unity, Unreal Engine</p>
                     </div>
+                    <div class="path-item">
+                        <div class="path-item-header">
+                            <div class="path-icon">⛓️</div>
+                            <h3>Blockchain</h3>
+                        </div>
+                        <p>Web3, Smart Contracts</p>
+                    </div>
                 </div>
             </div>
         </div>
         
+        <!-- Main Area -->
         <div class="main-area">
             <div class="header">
                 <div class="header-content">
@@ -700,33 +598,34 @@
                     <p>Get personalized course recommendations powered by Claude AI</p>
                 </div>
                 <div class="header-actions">
-                    <button class="header-btn" onclick="clearChat()">🔄 New Chat</button>
+                    <button class="header-btn">💾 Save Progress</button>
+                    <button class="header-btn">🔄 New Chat</button>
                 </div>
             </div>
             
-            <div class="chat-area" id="chatArea">
-                <div class="welcome" id="welcome">
+            <div class="chat-area">
+                <div class="welcome">
                     <div class="welcome-icon">🚀</div>
                     <h2>Start Your Learning Journey Today!</h2>
                     <p>Get AI-powered course recommendations from Udemy, Coursera, edX, and more. Build custom learning paths tailored to your goals.</p>
                     
                     <div class="quick-actions">
-                        <div class="action-btn" onclick="ask('Show me the best React courses with direct links to Udemy and Coursera')">
+                        <div class="action-btn">
                             <div class="icon">🎯</div>
                             <div class="title">Popular Courses</div>
                             <div class="desc">Top-rated courses with links</div>
                         </div>
-                        <div class="action-btn" onclick="ask('Create a 6-month learning roadmap for full-stack development with specific course links')">
+                        <div class="action-btn">
                             <div class="icon">🗺️</div>
                             <div class="title">Learning Roadmap</div>
                             <div class="desc">Structured path with timeline</div>
                         </div>
-                        <div class="action-btn" onclick="ask('Best free courses for Python beginners on FreeCodeCamp and YouTube')">
+                        <div class="action-btn">
                             <div class="icon">💰</div>
                             <div class="title">Free Resources</div>
                             <div class="desc">Quality courses, zero cost</div>
                         </div>
-                        <div class="action-btn" onclick="ask('AWS certification courses with links and preparation timeline')">
+                        <div class="action-btn">
                             <div class="icon">🏆</div>
                             <div class="title">Certifications</div>
                             <div class="desc">Professional credentials</div>
@@ -752,137 +651,29 @@
                         </div>
                     </div>
                 </div>
-                
-                <div id="messages"></div>
-                <div id="typing" class="typing" style="display: none;">
-                    <div class="avatar">🤖</div>
-                    <div class="typing-dots">
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                    </div>
-                </div>
             </div>
             
             <div class="input-area">
                 <div class="input-wrapper">
                     <input 
                         type="text" 
-                        id="input" 
                         class="input-field" 
                         placeholder="Ask for courses, learning paths, certifications, or career advice..."
-                        onkeypress="if(event.key==='Enter') send()"
                     >
-                    <button class="send-btn" id="sendBtn" onclick="send()">➤</button>
+                    <button class="send-btn">➤</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        let conversationHistory = [];
-
-        async function getClaudeResponse(question) {
-            try {
-                const systemPrompt = `You are an expert Learning Assistant specializing in software engineering education. Your role is to:
-
-1. ALWAYS provide REAL, WORKING course links from these platforms:
-   - Udemy (udemy.com/course/...)
-   - Coursera (coursera.org/learn/...)
-   - edX (edx.org/course/...)
-   - Pluralsight (pluralsight.com/courses/...)
-   - LinkedIn Learning (linkedin.com/learning/...)
-   - FreeCodeCamp (freecodecamp.org)
-   - Codecademy (codecademy.com)
-   - YouTube (specific channels/playlists)
-   - Udacity (udacity.com)
-
-2. Format course recommendations as:
-   📚 **Course Name**
-   👨‍🏫 Instructor/Platform
-   ⏱️ Duration | 💰 Price (Free/Paid/Subscription)
-   🔗 Link: [actual URL]
-   📝 What you'll learn: [brief description]
-   ⭐ Rating: [if known]
-
-3. REQUIREMENTS:
-   - Provide AT LEAST 4-6 courses per request
-   - Include a mix of free and paid options
-   - Prioritize highly-rated courses (4.5+ stars)
-   - Suggest both beginner and advanced options
-   - Include certification courses when applicable
-   - Add YouTube playlist links for free learning
-   - Provide FreeCodeCamp links for free alternatives
-   - For each platform, suggest 1-2 specific courses
-
-4. For learning paths, create a structured roadmap with:
-   - **Beginner Level** (1-3 months)
-   - **Intermediate Level** (3-6 months)
-   - **Advanced Level** (6-12 months)
-   - Specific courses with links for each level
-   - Time estimates for completion
-   - Project suggestions for practice
-
-5. ALWAYS use real URLs in this exact format:
-   - https://www.udemy.com/course/[course-name]/
-   - https://www.coursera.org/learn/[course-name]
-   - https://www.edx.org/course/[course-name]
-   - https://www.youtube.com/playlist?list=[playlist-id]
-
-6. Add helpful context:
-   - Prerequisites for each course
-   - Best order to take courses
-   - Estimated total cost
-   - Free trial options
-   - Certification value
-
-Be enthusiastic, encouraging, and provide actionable learning resources with REAL, CLICKABLE LINKS.`;
-
-                const messages = [
-                    { role: "user", content: systemPrompt },
-                    { role: "assistant", content: "I understand. I'll provide detailed course recommendations with real, working links from major learning platforms. I'll include course names, instructors, durations, prices, ratings, and direct URLs. I'll format everything clearly and provide a mix of free and paid options with structured learning paths when appropriate." }
-                ];
-
-                conversationHistory.forEach(msg => messages.push(msg));
-                messages.push({ role: "user", content: question });
-
-                const response = await fetch("https://api.anthropic.com/v1/messages", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        model: "claude-sonnet-4-20250514",
-                        max_tokens: 1000,
-                        messages: messages
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API Error: ${response.status}`);
-                }
-
-                const data = await response.json();
-                const answer = data.content[0].text;
-
-                conversationHistory.push(
-                    { role: "user", content: question },
-                    { role: "assistant", content: answer }
-                );
-
-                if (conversationHistory.length > 10) {
-                    conversationHistory = conversationHistory.slice(-10);
-                }
-
-                return answer;
-            } catch (error) {
-                console.error('Error:', error);
-                return `❌ Error: ${error.message}\n\nPlease try again or rephrase your question.`;
-            }
-        }
-
-        function addMessage(role, text) {
-            document.getElementById('welcome').style.display = 'none';
-            
-            const container = document.getElementById('messages');
-            const msg = document.createElement('</parameter>') 
+        // Add interactivity for path selection
+        document.querySelectorAll('.path-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.path-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
