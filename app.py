@@ -578,10 +578,8 @@ def get_project_context(limit=10):
         return ""
 # ======================================================
 # PERFORMANCE CALCULATION HELPERS (UPDATED)
-# ======================================================
-
-def get_or_create_performance_metric(employee_id, month=None):
-    """Get or create performance metric for an employee for a specific month"""
+# =============================================def get_or_create_performance_metric(employee_id, month=None):
+    """Get performance metric for an employee for a specific month (NO AUTO-CREATE)"""
     if month is None:
         month = datetime.utcnow().strftime("%Y-%m")
     
@@ -590,14 +588,8 @@ def get_or_create_performance_metric(employee_id, month=None):
         month=month
     ).first()
     
-    if not metric:
-        metric = PerformanceMetric(
-            employee_id=employee_id,
-            month=month
-        )
-        db.session.add(metric)
-        db.session.commit()
-    
+    # REMOVED: Auto-creation logic
+    # Only return existing metrics, don't create new ones
     return metric
 
 
@@ -615,22 +607,23 @@ def update_employee_performance_scores():
         if metric:
             emp.performance_score = metric.calculate_overall_score()
         else:
-            # Create default metric if none exists
-            metric = get_or_create_performance_metric(emp.employee_id, current_month)
-            emp.performance_score = metric.calculate_overall_score()
+            # If no metric exists, set to None or keep existing score
+            # Don't create default metrics
+            if emp.performance_score is None:
+                emp.performance_score = None  # Or keep as is
     
     db.session.commit()
 
 
 def get_average_performance():
-    """Calculate average performance of all employees"""
-    employees = Employee.query.all()
+    """Calculate average performance of all employees with metrics"""
+    employees = Employee.query.filter(Employee.performance_score.isnot(None)).all()
     if not employees:
         return 0
     
-    scores = [emp.performance_score for emp in employees if emp.performance_score is not None]
+    scores = [emp.performance_score for emp in employees]
     if not scores:
-        return 75.0
+        return 0
     
     return round(sum(scores) / len(scores), 1)
 
@@ -644,9 +637,21 @@ def calculate_performance_metrics(employee):
         month=current_month
     ).first()
     
+    # If no metric exists, return None or minimal data
     if not metric:
-        # Create default if doesn't exist
-        metric = get_or_create_performance_metric(employee.employee_id, current_month)
+        return {
+            "project_participation": min(ProjectMember.query.filter_by(employee_id=employee.employee_id).count() * 5, 15),
+            "skills_score": min(len(employee.skills) * 2, 10) if employee.skills else 0,
+            "experience_score": min((employee.total_exp or 0) * 1.5, 10),
+            "profile_completeness": sum(1 for item in [employee.resume_path, employee.profile_pic, employee.phone, employee.department, employee.skills] if item),
+            "attendance": None,
+            "task_completion": None,
+            "quality": None,
+            "punctuality": None,
+            "collaboration": None,
+            "productivity": None,
+            "has_metrics": False
+        }
     
     return {
         "project_participation": min(ProjectMember.query.filter_by(employee_id=employee.employee_id).count() * 5, 15),
@@ -658,20 +663,9 @@ def calculate_performance_metrics(employee):
         "quality": metric.quality_score,
         "punctuality": metric.punctuality_score,
         "collaboration": metric.collaboration_score,
-        "productivity": metric.productivity_score
+        "productivity": metric.productivity_score,
+        "has_metrics": True
     }
-
-
-def get_performance_trend(score):
-    """Determine performance trend"""
-    if score is None:
-        return "stable"
-    if score >= 85:
-        return "up"
-    elif score >= 70:
-        return "stable"
-    else:
-        return "down"
 
 
 # ======================================================
@@ -740,14 +734,14 @@ def submit():
         skills_data = {}
         for i in range(len(skill_names)):
             skill_name = skill_names[i].strip()
-            if skill_name:  # Only add non-empty skills
+            if skill_name:
                 try:
                     skill_exp = float(skill_exps[i]) if i < len(skill_exps) and skill_exps[i] else 0
                 except (ValueError, IndexError):
                     skill_exp = 0
                 skills_data[skill_name] = skill_exp
         
-        # Parse date of birth
+        # Parse dates
         dob = None
         dob_str = request.form.get("dob")
         if dob_str:
@@ -756,7 +750,6 @@ def submit():
             except:
                 pass
         
-        # Parse joining date
         joining_date = None
         joining_str = request.form.get("joining_date")
         if joining_str:
@@ -766,31 +759,25 @@ def submit():
                 pass
         
         # Parse total experience
-        total_exp = None  # Change default from 0.0 to None initially
+        total_exp = 0.0
         exp_str = request.form.get("total_exp", "").strip()
         if exp_str:
             try:
                 total_exp = float(exp_str)
-                if total_exp < 0:  # Validate non-negative
+                if total_exp < 0:
                     total_exp = 0.0
             except ValueError:
-                total_exp = 0.0  # Default to 0 if invalid
+                total_exp = 0.0
                 flash("Invalid experience value, defaulting to 0", "warning")
-        else:
-            total_exp = 0.0  # Default to 0 if empty
-
-
         
         # Handle file uploads
         resume_filename = None
         profile_pic_filename = None
         
-        # Handle resume upload
         if 'resume' in request.files:
             resume_file = request.files['resume']
             if resume_file and resume_file.filename != '':
                 if allowed_file(resume_file.filename, ALLOWED_RESUME_EXT):
-                    # Create safe filename with employee_id prefix
                     original_filename = secure_filename(resume_file.filename)
                     resume_filename = f"{employee_id}_resume_{original_filename}"
                     resume_path = os.path.join(app.config['UPLOAD_FOLDER'], resume_filename)
@@ -798,12 +785,10 @@ def submit():
                 else:
                     flash("Invalid resume file format. Allowed: pdf, doc, docx", "warning")
         
-        # Handle profile picture upload
         if 'profile_pic' in request.files:
             pic_file = request.files['profile_pic']
             if pic_file and pic_file.filename != '':
                 if allowed_file(pic_file.filename, ALLOWED_IMAGE_EXT):
-                    # Create safe filename with employee_id prefix
                     original_filename = secure_filename(pic_file.filename)
                     profile_pic_filename = f"{employee_id}_profile_{original_filename}"
                     pic_path = os.path.join(app.config['UPLOAD_FOLDER'], profile_pic_filename)
@@ -811,7 +796,7 @@ def submit():
                 else:
                     flash("Invalid image file format. Allowed: png, jpg, jpeg, gif, bmp", "warning")
         
-        # Create new employee with all fields
+        # Create new employee WITHOUT performance metrics
         e = Employee(
             employee_id=employee_id,
             full_name=request.form.get("full_name", "").strip(),
@@ -823,28 +808,28 @@ def submit():
             job_title=request.form.get("job_title", "").strip(),
             total_exp=total_exp,
             skills=skills_data,
-            resume_path=resume_filename,  # Store just filename, not full path
-            profile_pic=profile_pic_filename,  # Store just filename, not full path
+            resume_path=resume_filename,
+            profile_pic=profile_pic_filename,
             joining_date=joining_date,
             status=request.form.get("status", "Active"),
             manager=request.form.get("manager", "").strip(),
-            performance_score=75.0  # Default performance score
+            performance_score=None  # Set to None initially - no default metrics
         )
 
-        # Add to database
         db.session.add(e)
         db.session.commit()
         
-        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
+        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully! Add performance metrics from the Performance page.", "success")
         return redirect("/employees")
         
     except Exception as ex:
         db.session.rollback()
         flash(f"❌ Error adding employee: {str(ex)}", "danger")
-        print(f"ERROR in /submit: {str(ex)}")  # Debug in console
+        print(f"ERROR in /submit: {str(ex)}")
         import traceback
-        traceback.print_exc()  # Full error trace
+        traceback.print_exc()
         return redirect("/form")
+    
     
 @app.route("/employees")
 def employees():
@@ -1043,8 +1028,7 @@ def view_employee(employee_id):
         "employee_detail.html",
         employee=employee,
         projects=projects,
-        metrics=metrics,
-        performance_trend=get_performance_trend(employee.performance_score)
+        metrics=metrics
     )
 
 # ======================================================
@@ -1076,7 +1060,6 @@ def performance_dashboard():
             "performance_score": emp.performance_score,
             "project_count": project_count,
             "metrics": metrics,
-            "trend": get_performance_trend(emp.performance_score)
         })
     
     # Sort by performance score (highest first)
@@ -1251,7 +1234,7 @@ def performance_list():
 
 @app.route("/performance/edit")
 def performance_edit():
-    """Simple edit form for performance metrics - FIXED VERSION"""
+    """Edit form for performance metrics - only creates on first save"""
     if "user" not in session:
         return redirect("/login")
     
@@ -1260,27 +1243,55 @@ def performance_edit():
         flash("Employee ID required", "danger")
         return redirect("/performance/list")
     
-    # Fetch the employee
     employee = Employee.query.filter_by(employee_id=employee_id).first()
     if not employee:
         flash("Employee not found", "danger")
         return redirect("/performance/list")
     
     current_month = datetime.utcnow().strftime("%Y-%m")
+    
+    # Check if metric exists
     metric = PerformanceMetric.query.filter_by(
         employee_id=employee_id,
         month=current_month
     ).first()
     
+    # Create a default metric object for the form (not saved to DB yet)
     if not metric:
-        metric = get_or_create_performance_metric(employee_id, current_month)
+        metric = PerformanceMetric(
+            employee_id=employee_id,
+            month=current_month,
+            attendance_score=85.0,
+            days_present=20,
+            days_total=22,
+            late_arrivals=0,
+            task_completion_score=80.0,
+            tasks_completed=30,
+            tasks_assigned=35,
+            on_time_completion=90.0,
+            quality_score=85.0,
+            bug_rate=2.0,
+            review_rating=4.0,
+            rework_required=5.0,
+            punctuality_score=90.0,
+            meeting_attendance=95.0,
+            deadline_adherence=90.0,
+            collaboration_score=85.0,
+            peer_reviews=10,
+            team_contributions=20,
+            communication_rating=4.0,
+            productivity_score=80.0,
+            lines_of_code=1000,
+            commits=50,
+            story_points=25
+        )
     
-    # Pass all necessary data to template
     return render_template(
         "performance_edit.html",
         employee=employee,
         metric=metric,
-        current_month=current_month
+        current_month=current_month,
+        is_new_metric=(metric.id is None)
     )
 
 
@@ -1296,39 +1307,51 @@ def api_performance_list():
         
         employee_data = []
         total_score = 0
+        employees_with_metrics = 0
         
         for emp in employees:
-            # Get or create performance metric
             metric = PerformanceMetric.query.filter_by(
                 employee_id=emp.employee_id,
                 month=current_month
             ).first()
             
-            if not metric:
-                metric = get_or_create_performance_metric(emp.employee_id, current_month)
-            
-            overall_score = metric.calculate_overall_score()
-            total_score += overall_score
-            
-            employee_data.append({
-                "employee_id": emp.employee_id,
-                "name": emp.full_name,
-                "department": emp.department,
-                "overall_score": overall_score,
-                "attendance": metric.attendance_score,
-                "tasks": metric.task_completion_score,
-                "quality": metric.quality_score,
-                "last_updated": metric.last_updated.isoformat()
-            })
+            if metric:
+                overall_score = metric.calculate_overall_score()
+                total_score += overall_score
+                employees_with_metrics += 1
+                
+                employee_data.append({
+                    "employee_id": emp.employee_id,
+                    "name": emp.full_name,
+                    "department": emp.department,
+                    "overall_score": overall_score,
+                    "attendance": metric.attendance_score,
+                    "tasks": metric.task_completion_score,
+                    "quality": metric.quality_score,
+                    "last_updated": metric.last_updated.isoformat()
+                })
+            else:
+                # Include employees without metrics with a flag
+                employee_data.append({
+                    "employee_id": emp.employee_id,
+                    "name": emp.full_name,
+                    "department": emp.department,
+                    "overall_score": 0,
+                    "attendance": 0,
+                    "tasks": 0,
+                    "quality": 0,
+                    "last_updated": emp.created_at.isoformat() if emp.created_at else datetime.utcnow().isoformat(),
+                    "no_metrics": True
+                })
         
-        # Calculate statistics
-        avg_score = total_score / len(employees) if employees else 0
+        avg_score = total_score / employees_with_metrics if employees_with_metrics > 0 else 0
         
         return jsonify({
             "success": True,
             "employees": employee_data,
             "stats": {
                 "total_employees": len(employees),
+                "employees_with_metrics": employees_with_metrics,
                 "avg_score": avg_score,
                 "current_month": current_month
             }
@@ -1359,7 +1382,17 @@ def api_get_performance(employee_id):
         ).first()
         
         if not metric:
-            metric = get_or_create_performance_metric(employee_id, current_month)
+            return jsonify({
+                "success": True,
+                "employee": {
+                    "employee_id": employee.employee_id,
+                    "full_name": employee.full_name,
+                    "department": employee.department,
+                    "job_title": employee.job_title
+                },
+                "metric": None,
+                "has_metrics": False
+            }), 200
         
         return jsonify({
             "success": True,
@@ -1369,7 +1402,8 @@ def api_get_performance(employee_id):
                 "department": employee.department,
                 "job_title": employee.job_title
             },
-            "metric": metric.to_dict()
+            "metric": metric.to_dict(),
+            "has_metrics": True
         }), 200
         
     except Exception as e:
@@ -1381,33 +1415,35 @@ def api_get_performance(employee_id):
 
 @app.route("/api/performance/update/<string:employee_id>", methods=["POST"])
 def api_update_performance(employee_id):
-    """API endpoint to update employee performance metrics"""
+    """API endpoint to update/create employee performance metrics"""
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
     try:
-        # Get employee
         employee = Employee.query.filter_by(employee_id=employee_id).first()
         if not employee:
             return jsonify({"success": False, "error": "Employee not found"}), 404
         
-        # Get JSON data from request
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
         
-        # Get or create metric for the specified month
         month = data.get('month', datetime.utcnow().strftime("%Y-%m"))
+        
+        # Check if metric exists
         metric = PerformanceMetric.query.filter_by(
             employee_id=employee_id,
             month=month
         ).first()
         
+        is_new = False
         if not metric:
+            # CREATE NEW METRIC (only when explicitly saving)
             metric = PerformanceMetric(employee_id=employee_id, month=month)
             db.session.add(metric)
+            is_new = True
         
-        # Update all metric fields
+        # Update all fields
         metric.attendance_score = float(data.get('attendance_score', 85.0))
         metric.days_present = int(data.get('days_present', 20))
         metric.days_total = int(data.get('days_total', 22))
@@ -1440,38 +1476,30 @@ def api_update_performance(employee_id):
         metric.notes = data.get('notes', '')
         metric.last_updated = datetime.utcnow()
         
-        # Calculate overall score and update employee
+        # Calculate and update employee performance score
         overall_score = metric.calculate_overall_score()
         employee.performance_score = overall_score
         
-        # Commit changes
         db.session.commit()
         
         return jsonify({
             "success": True,
-            "message": "Performance metrics updated successfully",
+            "message": f"Performance metrics {'created' if is_new else 'updated'} successfully",
             "overall_score": overall_score,
             "employee_id": employee_id,
-            "month": month
+            "month": month,
+            "is_new": is_new
         }), 200
         
     except ValueError as ve:
         db.session.rollback()
-        return jsonify({
-            "success": False,
-            "error": f"Invalid data format: {str(ve)}"
-        }), 400
+        return jsonify({"success": False, "error": f"Invalid data format: {str(ve)}"}), 400
     except Exception as e:
         db.session.rollback()
         print(f"Error updating performance: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-        
-
+        return jsonify({"success": False, "error": str(e)}), 500
 # ======================================================
 # AI CHATBOT ROUTES
 # ======================================================
