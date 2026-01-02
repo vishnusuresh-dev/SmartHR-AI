@@ -1237,14 +1237,7 @@ def delete_project(project_id):
 
 
 # ============================================
-# SIMPLE PERFORMANCE MANAGEMENT ROUTES
-# ============================================
-
-# Add these corrected routes to your app.py
-# Replace the existing performance routes section
-
-# ============================================
-# CORRECTED PERFORMANCE MANAGEMENT ROUTES
+# PERFORMANCE MANAGEMENT ROUTES
 # ============================================
 
 @app.route("/performance/list")
@@ -1386,10 +1379,6 @@ def api_get_performance(employee_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ============================================
-# CRITICAL MISSING ROUTE - ADD THIS
-# ============================================
-
 @app.route("/api/performance/update/<string:employee_id>", methods=["POST"])
 def api_update_performance(employee_id):
     """API endpoint to update employee performance metrics"""
@@ -1481,6 +1470,8 @@ def api_update_performance(employee_id):
             "success": False,
             "error": str(e)
         }), 500
+        
+
 # ======================================================
 # AI CHATBOT ROUTES
 # ======================================================
