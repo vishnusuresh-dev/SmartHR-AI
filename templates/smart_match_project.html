@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Match | {{ project.name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: #f3f4f6; } header { background: #111827; color: #fff; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; } header h2 { margin: 0; font-size: 20px; } .back-btn { background: #374151; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; } .container { max-width: 1200px; margin: auto; padding: 24px; } .project-info { background: #ffffff; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 6px 18px rgba(0,0,0,0.05); } .project-info h3 { margin-top: 0; } .badge { display: inline-block; background: #e5e7eb; color: #111827; padding: 4px 10px; border-radius: 999px; font-size: 12px; margin-right: 6px; } h4.section-title { margin-top: 32px; margin-bottom: 12px; color: #111827; } table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,0.05); } th, td { padding: 12px; text-align: left; font-size: 14px; } th { background: #f9fafb; font-weight: 600; } tr:not(:last-child) { border-bottom: 1px solid #e5e7eb; } .score { font-weight: 600; } .high { color: #16a34a; } .medium { color: #ca8a04; } .low { color: #dc2626; } .assign-btn { background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; } .assign-btn:hover { background: #1d4ed8; } .no-data { background: #fff; padding: 20px; border-radius: 10px; color: #6b7280; box-shadow: 0 6px 18px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>🧠 Smart Matching – {{ project.name }}</h2>
+    <button class="back-btn" onclick="window.location.href='/smart-matching'">
+        ⬅ Back
+    </button>
+</header>
+
+<div class="container">
+
+    <!-- Project Details -->
+    <div class="project-info">
+        <h3>{{ project.name }}</h3>
+        <p>
+    <b>Required Skills:</b>
+    {% for s in project_skills %}
+        <span class="badge">{{ s }}</span>
+    {% endfor %}
+</p>
+
+        <div>
+            <span class="badge">Code: {{ project.project_code }}</span>
+            <span class="badge">Status: {{ project.status }}</span>
+        </div>
+    </div>
+
+    <!-- Employees working on this project -->
+    <h4 class="section-title">✅ Employees Working on this Project</h4>
+
+    {% if matched and matched|length > 0 %}
+    <table>
+        <tr>
+            <th>Employee Name</th>
+            <th>Final Match Score</th>
+            <th>Action</th>
+        </tr>
+
+        {% for item in matched %}
+        <tr>
+            <td>{{ item.full_name }}</td>
+            <td class="score">{{ item.final_score }}
+            {% if best_match and item.employee_id == best_match.employee_id %}
+                <span class="badge">⭐ Best Match</span>
+            {% endif %}
+            </td>
+            <td>
+    <form method="POST" action="/projects/{{ project.id }}/remove/{{ item.employee_id }}" 
+          onsubmit="return confirm('Are you sure you want to remove this employee?');">
+        <button type="submit" class="assign-btn" style="background:#dc2626;">Remove</button>
+    </form>
+</td>
+
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="no-data">No employees currently assigned to this project.</div>
+    {% endif %}
+
+    <!-- Employees NOT working on this project -->
+    <h4 class="section-title">👤 Available Employees (Not Assigned)</h4>
+
+    {% if not_assigned and not_assigned|length > 0 %}
+    <table>
+        <tr>
+            <th>Employee Name</th>
+            <th>Action</th>
+            <th>Final Match Score</th>
+        </tr>
+
+        {% for item in not_assigned %}
+        <tr>
+            <td>{{ item.full_name }}</td>
+            <td>
+                <form method="POST" action="/assign-employee">
+                    <input type="hidden" name="employee_id" value="{{ item.employee_id }}">
+                    <input type="hidden" name="project_id" value="{{ project_id }}">
+                    <button class="assign-btn">
+                        Assign
+                    </button>
+                </form>
+            </td>
+            <td class="score">
+    {{ item.final_score }}
+    {% if best_match and item.employee_id == best_match.employee_id %}
+        <span class="badge">⭐ Best Match</span>
+    {% endif %}
+</td>
+        </tr>
+        {% endfor %}
+        
+    </table>
+    {% else %}
+    <div class="no-data">All employees are already assigned to this project.</div>
+    {% endif %}
+
+</div>
+
+</body>
+</html>

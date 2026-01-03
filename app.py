@@ -3,6 +3,7 @@ import uuid
 import json
 from datetime import datetime, timedelta
 import random
+import requests
 
 from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -52,6 +53,8 @@ class Employee(db.Model):
     employee_id = db.Column(db.String(64), unique=True, nullable=False)  # GLOBAL ID
     full_name = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(200), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
+    project = db.relationship('Project', backref='employees')#optional
     password = db.Column(db.String(200))
     dob = db.Column(db.Date)
     phone = db.Column(db.String(50))
@@ -91,6 +94,7 @@ class Project(db.Model):
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     status = db.Column(db.String(50), default="Active")
+    required_skills = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -234,6 +238,81 @@ class PerformanceMetric(db.Model):
             "last_updated": self.last_updated.isoformat(),
             "notes": self.notes
         }
+
+#smart
+
+def extract_skills(skills):
+    if not skills:
+        return set()
+
+    # If skills is a dictionary
+    if isinstance(skills, dict):
+        return set(k.strip().lower() for k in skills.keys())
+
+    # If skills is a string
+    if isinstance(skills, str):
+        return set(
+            s.strip().lower()
+            for s in skills.split(',')
+            if s.strip()
+        )
+
+    return set()
+
+def ai_final_match_score(employee_context):
+    """
+    Uses LLaMA to calculate FINAL MATCH SCORE (0-100)
+    considering ALL metrics
+    """
+
+    prompt = f"""
+You are a senior HR AI expert.
+
+Your task:
+Evaluate how suitable an employee is for a project.
+
+CONSIDER ALL FACTORS BELOW:
+1. Skill match relevance (skills + skill experience)
+2. Total professional experience
+3. Performance metrics:
+   - Attendance
+   - Punctuality
+   - Task completion
+   - Quality
+   - Collaboration
+   - Productivity
+4. Project experience / history
+5. Overall consistency & reliability
+
+EMPLOYEE DATA (JSON):
+{json.dumps(employee_context, indent=2)}
+
+RULES:
+- Return a SINGLE NUMBER between 0 and 100
+- Higher score = better project fit
+- Do NOT explain anything
+- Do NOT return text, only the number
+"""
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "llama3",
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=20
+        )
+
+        score = float(response.json()["response"].strip())
+        return min(max(score, 0), 100)
+
+    except Exception as e:
+        print("AI MATCH ERROR:", e)
+        return employee_context["performance"]["attendance"]  # safe fallback
+
+
 
 # ======================================================
 # HELPERS
@@ -659,6 +738,38 @@ def calculate_performance_metrics(employee):
         "punctuality": metric.punctuality_score,
         "collaboration": metric.collaboration_score,
         "productivity": metric.productivity_score
+    }
+
+#SMART
+
+def collect_employee_ai_context(emp, project):
+    """
+    Collect ALL metrics needed for AI-based matching
+    """
+
+    # Skills
+    employee_skills = emp.skills or {}
+    project_skills = extract_skills(project.required_skills)
+
+    # Experience
+    total_exp = emp.total_exp or 0
+
+    # Performance metrics
+    metrics = calculate_performance_metrics(emp)
+
+    # Project history
+    project_count = ProjectMember.query.filter_by(
+        employee_id=emp.employee_id
+    ).count()
+
+    return {
+        "employee_id": emp.employee_id,
+        "name": emp.full_name,
+        "skills": employee_skills,
+        "total_experience_years": total_exp,
+        "performance": metrics,
+        "project_history_count": project_count,
+        "project_required_skills": list(project_skills)
     }
 
 
@@ -1092,6 +1203,95 @@ def performance_dashboard():
         total_employees=len(employees)
     )
 
+#SMART
+
+@app.route('/smart-matching')
+def smart_matching():
+    projects = Project.query.all()
+    return render_template(
+        'smart_matching.html',
+        projects=projects
+    )
+
+@app.route('/smart-matching/<int:project_id>')
+def smart_match_project(project_id):
+    project = Project.query.get_or_404(project_id)
+
+    # Project required skills
+    project_skills = extract_skills(project.required_skills)
+    total_project_skills = len(project_skills)
+
+    # Already assigned employees
+    assigned_members = ProjectMember.query.filter_by(project_id=project.id).all()
+    assigned_ids = [m.employee_id for m in assigned_members]
+
+    matched = []
+    not_assigned = []
+
+    employees = Employee.query.all()
+
+    for emp in employees:
+        employee_skills = extract_skills(emp.skills)
+
+        matched_skill_count = len(project_skills & employee_skills)
+
+        if total_project_skills > 0:
+            skill_match = round(
+                (matched_skill_count / total_project_skills) * 100, 1
+            )
+        else:
+            skill_match = 0
+            
+        employee_context = collect_employee_ai_context(emp, project)
+        final_score = ai_final_match_score(employee_context)
+
+
+        # Attach dynamic attributes
+        emp.skill_match = skill_match
+        emp.final_score = final_score
+
+        if emp.employee_id in assigned_ids:
+            matched.append(emp)
+        else:
+            not_assigned.append(emp)
+
+    all_candidates = matched + not_assigned
+    best_match = max(
+        all_candidates, key=lambda e: e.final_score
+    ) if all_candidates else None
+
+    return render_template(
+        'smart_match_project.html',
+        project=project,
+        matched=matched,
+        not_assigned=not_assigned,
+        project_skills=project_skills,
+        best_match=best_match,
+        project_id=project.id
+    )
+
+
+@app.route('/assign-employee', methods=['POST'])
+def assign_employee():
+    emp_id = request.form['employee_id']
+    project_id = request.form['project_id']
+
+    emp = Employee.query.filter_by(employee_id=emp_id).first()
+
+    if not emp:
+        flash("Employee not found", "danger")
+        return redirect(url_for('smart_match_project', project_id=project_id))
+
+    member = ProjectMember(
+        employee_id=emp.employee_id,
+        project_id=project_id
+    )
+
+    db.session.add(member)
+    db.session.commit()
+
+    return redirect(url_for('smart_match_project', project_id=project_id))
+
 
 # ======================================================
 # PROJECT ROUTES
@@ -1144,6 +1344,8 @@ def create_project():
     # Get form data
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip()
+    required_skills = request.form.get('required_skills', "").strip()
+    print("Skills submitted:", required_skills)
     
     # Validate project name
     if not name:
@@ -1169,6 +1371,7 @@ def create_project():
             project_code=project_code,
             name=name,
             description=description if description else None,
+            required_skills=required_skills,
             status="Active"
         )
         
@@ -1223,6 +1426,8 @@ def remove_member(project_id, employee_id):
         flash("Member not found", "warning")
     
     return redirect("/projects")
+
+
 
 
 @app.route("/projects/<int:project_id>/delete", methods=["POST"])

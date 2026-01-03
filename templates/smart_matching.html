@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Matching | SmartHR AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+    --primary: #6d5dfc;
+    --primary-dark: #5b4fe0;
+    --secondary: #8b7cff;
+
+    --bg-main: linear-gradient(180deg, #eef5ff, #e6f0ff);
+    --card-bg: #ffffff;
+
+    --text-dark: #111827;
+    --text-muted: #6b7280;
+
+    --border-light: #e5e7eb;
+}
+
+/* PAGE BACKGROUND */
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: var(--bg-main);
+}
+
+/* HEADER (Dashboard Style) */
+header {
+    background: #ffffff;
+    color: var(--text-dark);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+}
+
+header h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+/* BACK BUTTON */
+.back-btn {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.back-btn:hover {
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+}
+
+/* CONTAINER */
+.container {
+    max-width: 1100px;
+    margin: auto;
+    padding: 32px 24px;
+}
+
+/* INTRO CARD */
+.intro {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 26px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+.intro h3 {
+    margin: 0 0 8px;
+    color: var(--text-dark);
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.intro p {
+    color: var(--text-muted);
+    font-size: 15px;
+}
+
+/* PROJECT GRID */
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 24px;
+}
+
+/* PROJECT CARD (Dashboard Card Look) */
+.project-card {
+    background: var(--card-bg);
+    border-radius: 22px;
+    padding: 22px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.25s ease;
+}
+
+.project-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 18px 40px rgba(0,0,0,0.12);
+}
+
+/* TITLE */
+.project-card h4 {
+    margin: 0 0 8px;
+    color: var(--text-dark);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* DESCRIPTION */
+.project-card p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+}
+
+/* META */
+.project-meta {
+    font-size: 13px;
+    color: #374151;
+    margin-bottom: 18px;
+}
+
+/* SMART MATCH BUTTON (Same as Dashboard Buttons) */
+.match-btn {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: #fff;
+    border: none;
+    padding: 12px;
+    border-radius: 14px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.match-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(109,93,252,0.45);
+}
+
+/* EMPTY STATE */
+.no-projects {
+    background: var(--card-bg);
+    border-radius: 22px;
+    padding: 48px;
+    text-align: center;
+    color: var(--text-muted);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+}
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>🧠 Smart Matching</h2>
+    <button class="back-btn" onclick="window.location.href='/dashboard'">
+        ⬅ Back to Dashboard
+    </button>
+</header>
+
+<div class="container">
+
+    <div class="intro">
+        <h3>Project-wise Smart Employee Matching</h3>
+        <p>
+            Select a project to analyze employee skill match, performance score,
+            and assign the best-suited employees.
+        </p>
+    </div>
+
+    {% if projects and projects|length > 0 %}
+    <div class="projects-grid">
+
+        {% for project in projects %}
+        <div class="project-card">
+            <div>
+                <h4>{{ project.name }}</h4>
+
+                {% if project.description %}
+                <p>{{ project.description }}</p>
+                {% else %}
+                <p>No description provided.</p>
+                {% endif %}
+
+                <div class="project-meta">
+                    <strong>Project Code:</strong> {{ project.project_code }} <br>
+                    <strong>Status:</strong> {{ project.status }}
+                </div>
+            </div>
+
+            <!-- PART 4 BUTTON -->
+            <button
+                class="match-btn"
+                onclick="window.location.href='/smart-matching/{{ project.id }}'">
+                Smart Matching
+            </button>
+        </div>
+        {% endfor %}
+
+    </div>
+    {% else %}
+    <div class="no-projects">
+        <h3>No Projects Found</h3>
+        <p>Please create a project first.</p>
+    </div>
+    {% endif %}
+
+</div>
+
+</body>
+</html>
