@@ -467,41 +467,70 @@ Format your response:
 
 def ask_rag_question(query: str):
     """
-    Enhanced RAG query processing with better prompting and formatting
+    Enhanced RAG query with metadata filtering
     """
     try:
         query_lower = query.lower()
         
-        # Get retriever
-        retriever = get_retriever(k=10)
+        print(f"\n🤖 Processing query: {query}")
         
-        # Initialize LLM with lower temperature for factual responses
+        # Initialize retriever
+        retriever = get_retriever(k=15)  # Get more docs for filtering
+        
+        # Initialize LLM
         llm = ChatOllama(model=LLM_MODEL, temperature=0.1)
         
-        # Retrieve from vector store
+        # Build metadata filter
+        where_filter = build_query_filter(query_lower)
+        
+        # Retrieve from vector store WITH metadata filtering
         vector_context = ""
         if retriever:
             try:
-                docs = retriever.invoke(query)
+                if where_filter:
+                    # Use filtered search
+                    print(f"  🔍 Using metadata filters: {where_filter}")
+                    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+                    vectordb = Chroma(
+                        persist_directory=CHROMA_DIR,
+                        embedding_function=embeddings
+                    )
+                    docs = vectordb.similarity_search(
+                        query,
+                        k=10,
+                        filter=where_filter  # 🔥 METADATA FILTERING
+                    )
+                    print(f"  ✅ Retrieved {len(docs)} filtered documents")
+                else:
+                    # Regular search
+                    docs = retriever.invoke(query)
+                    print(f"  ✅ Retrieved {len(docs)} documents")
+                
                 if docs:
                     # Take top 5 most relevant
                     vector_context = "\n---\n".join([d.page_content for d in docs[:5]])
+                    print(f"  📄 Using {len(docs[:5])} documents for context")
+                    
+                    # Debug: show what metadata we got
+                    sample_meta = docs[0].metadata if docs else {}
+                    print(f"  📊 Sample metadata keys: {list(sample_meta.keys())[:10]}")
+                    
             except Exception as e:
-                print(f"Vector retrieval error: {e}")
+                print(f"  ⚠️  Vector retrieval error: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Get targeted live context
+        # Get live context (less needed now with metadata filtering)
         live_context_parts = []
         
-        # Always add performance summary for context
-        live_context_parts.append(get_performance_summary_concise())
-        live_context_parts.append(get_department_summary())
-        
-        # Add specific context based on query
-        if any(word in query_lower for word in ['employee', 'who', 'list', 'show', 'find', 'attendance', 'performance']):
-            live_context_parts.append("\nEMPLOYEE DATA:\n" + get_employee_context_enhanced(query_lower, limit=15))
-        
-        if any(word in query_lower for word in ['project', 'team', 'working on', 'assigned']):
-            live_context_parts.append("\nPROJECT DATA:\n" + get_project_context())
+        # Only add live context if metadata filtering didn't work
+        if not where_filter or len(vector_context) < 500:
+            print(f"  📊 Adding live database context...")
+            live_context_parts.append(get_performance_summary_concise())
+            live_context_parts.append(get_department_summary())
+            
+            if any(word in query_lower for word in ['employee', 'who', 'list', 'show']):
+                live_context_parts.append("\nADDITIONAL EMPLOYEE DATA:\n" + get_employee_context_enhanced(query_lower, limit=10))
         
         live_context = "\n\n".join(live_context_parts)
         
@@ -516,14 +545,14 @@ CRITICAL RULES:
 2. Use actual names, numbers, and data from the context
 3. Format cleanly with bullet points or tables when listing multiple items
 4. If data is incomplete, state what's missing
-5. NO generic statements like "based on provided data" - just give the facts
+5. NO generic statements - just give the facts
 6. Maximum 200 words unless listing requires more
 
-CURRENT DATA:
-{live_context[:3000]}
+DOCUMENT DATA (FROM VECTOR STORE WITH METADATA FILTERING):
+{vector_context[:3500] if vector_context else "No relevant documents found"}
 
-HISTORICAL DATA FROM KNOWLEDGE BASE:
-{vector_context[:2000] if vector_context else "No relevant historical data"}
+LIVE DATABASE SUMMARY:
+{live_context[:1500] if live_context else ""}
 
 QUESTION: {query}
 
@@ -532,20 +561,21 @@ QUESTION: {query}
 ANSWER:"""
         
         # Get response
+        print(f"  🧠 Generating LLM response...")
         response = llm.invoke(prompt)
         answer = response.content.strip()
         
-        # Post-process to remove common verbose patterns
+        # Post-process
         answer = answer.replace("Based on the provided employee data, ", "")
         answer = answer.replace("Based on the provided data, ", "")
         answer = answer.replace("According to the information provided, ", "")
-        answer = answer.replace("Here are the ", "")
-        answer = answer.replace("Here is the ", "")
+        
+        print(f"  ✅ Response generated ({len(answer)} chars)")
         
         return answer
         
     except Exception as e:
-        print(f"Error in RAG query: {e}")
+        print(f"❌ Error in RAG query: {e}")
         import traceback
         traceback.print_exc()
         return f"I encountered an error processing your question: {str(e)}"
@@ -576,6 +606,70 @@ def get_project_context(limit=10):
     except Exception as e:
         print(f"Error getting project context: {e}")
         return ""
+    
+# ======================================================
+# METADATA FILTERING FOR ENHANCED RETRIEVAL
+# ======================================================
+
+def build_query_filter(query_lower):
+    """
+    Build ChromaDB metadata filter based on query keywords
+    Returns a dictionary for ChromaDB where clause
+    """
+    where_filter = {}
+    
+    # Department filtering
+    departments = ["engineering", "hr", "sales", "marketing", "finance", "operations"]
+    for dept in departments:
+        if dept in query_lower:
+            where_filter["department"] = dept.capitalize()
+            print(f"  🔍 Filtering by department: {dept.capitalize()}")
+            break
+    
+    # Performance filtering
+    if any(word in query_lower for word in ["top", "best", "high", "excellent"]):
+        where_filter["performance_range"] = "high"
+        print(f"  🔍 Filtering by performance: high")
+    elif any(word in query_lower for word in ["low", "poor", "underperform", "struggling"]):
+        where_filter["performance_range"] = "low"
+        print(f"  🔍 Filtering by performance: low")
+    elif "medium" in query_lower or "average" in query_lower:
+        where_filter["performance_range"] = "medium"
+        print(f"  🔍 Filtering by performance: medium")
+    
+    # Experience filtering
+    if "senior" in query_lower:
+        where_filter["experience_level"] = "senior"
+        print(f"  🔍 Filtering by experience: senior")
+    elif "junior" in query_lower:
+        where_filter["experience_level"] = "junior"
+        print(f"  🔍 Filtering by experience: junior")
+    elif "mid" in query_lower or "intermediate" in query_lower:
+        where_filter["experience_level"] = "mid"
+        print(f"  🔍 Filtering by experience: mid")
+    
+    # Availability filtering
+    if "available" in query_lower:
+        where_filter["available_for_projects"] = True
+        print(f"  🔍 Filtering by availability: True")
+    
+    # Status filtering
+    if "active" in query_lower and "employee" in query_lower:
+        where_filter["status"] = "Active"
+        print(f"  🔍 Filtering by status: Active")
+    
+    # Document type filtering
+    if "performance" in query_lower or "metric" in query_lower:
+        where_filter["document_type"] = "performance_metrics"
+        print(f"  🔍 Filtering by document type: performance_metrics")
+    elif "project" in query_lower and not "available" in query_lower:
+        where_filter["document_type"] = "project_assignment"
+        print(f"  🔍 Filtering by document type: project_assignment")
+    elif "resume" in query_lower or "cv" in query_lower:
+        where_filter["document_type"] = "resume"
+        print(f"  🔍 Filtering by document type: resume")
+    
+    return where_filter if where_filter else None
 # ======================================================
 # PERFORMANCE CALCULATION HELPERS (UPDATED)
 # ======================================================

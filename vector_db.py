@@ -17,6 +17,52 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app import app, db, Employee, PerformanceMetric, Project, ProjectMember
 
+# ======================================================
+# HELPER FUNCTIONS FOR METADATA ENRICHMENT
+# ======================================================
+
+def get_performance_range(score):
+    """Categorize performance score into ranges"""
+    if score is None:
+        return "unknown"
+    if score >= 85:
+        return "high"
+    elif score >= 70:
+        return "medium"
+    else:
+        return "low"
+
+
+def get_experience_level(years):
+    """Categorize experience into levels"""
+    if years is None or years < 2:
+        return "junior"
+    elif years < 5:
+        return "mid"
+    else:
+        return "senior"
+
+
+def extract_top_skills(emp, limit=5):
+    """Extract top N skills from employee"""
+    if not emp.skills:
+        return []
+    sorted_skills = sorted(
+        emp.skills.items(), 
+        key=lambda x: x[1], 
+        reverse=True
+    )[:limit]
+    return [skill for skill, _ in sorted_skills]
+
+
+def is_available_for_projects(employee_id, max_projects=3):
+    """Check if employee is available for new projects"""
+    project_count = ProjectMember.query.filter_by(
+        employee_id=employee_id
+    ).count()
+    return project_count < max_projects
+
+
 # -----------------------------------------------------------
 # CONFIG
 # -----------------------------------------------------------
@@ -58,7 +104,7 @@ def load_all_csv(folder_path):
 # 2. LOAD RESUME FILES
 # -----------------------------------------------------------
 def load_all_resumes(folder_path):
-    """Load all resume files from the uploads folder"""
+    """Load all resume files with ENRICHED METADATA from database"""
     documents = []
     
     if not os.path.exists(folder_path):
@@ -77,61 +123,137 @@ def load_all_resumes(folder_path):
     print(f"  - DOCs: {len(doc_files)}")
     print(f"  - DOCXs: {len(docx_files)}")
     
-    for file_path in all_resume_files:
-        try:
-            filename = os.path.basename(file_path)
-            employee_id = filename.split('_')[0]
-            
-            print(f"Loading resume: {filename} (Employee: {employee_id})")
-            
-            if file_path.endswith('.pdf'):
-                loader = PyPDFLoader(file_path)
-                pages = loader.load()
-                combined_text = "\n\n".join([page.page_content for page in pages])
-                doc = Document(
-                    page_content=combined_text,
-                    metadata={
-                        "source": file_path,
-                        "employee_id": employee_id,
-                        "document_type": "resume",
-                        "file_type": "pdf",
-                        "filename": filename
+    with app.app_context():  # Use Flask context to query database
+        for file_path in all_resume_files:
+            try:
+                filename = os.path.basename(file_path)
+                employee_id = filename.split('_')[0]
+                
+                print(f"Loading resume: {filename} (Employee: {employee_id})")
+                
+                # 🔥 GET EMPLOYEE DATA FROM DATABASE
+                emp = Employee.query.filter_by(employee_id=employee_id).first()
+                
+                # Get performance metric
+                current_month = datetime.utcnow().strftime("%Y-%m")
+                metric = None
+                if emp:
+                    metric = PerformanceMetric.query.filter_by(
+                        employee_id=employee_id,
+                        month=current_month
+                    ).first()
+                
+                # Get project count
+                project_count = 0
+                if emp:
+                    project_count = ProjectMember.query.filter_by(
+                        employee_id=employee_id
+                    ).count()
+                
+                # Base metadata
+                base_metadata = {
+                    "source": file_path,
+                    "employee_id": employee_id,
+                    "document_type": "resume",
+                    "file_type": file_path.split('.')[-1],
+                    "filename": filename
+                }
+                
+                # 🔥 ENRICHED METADATA FROM DATABASE
+                if emp:
+                    top_skills = extract_top_skills(emp, limit=5)
+                    
+                    enriched_metadata = {
+                        # Identity
+                        "full_name": str(emp.full_name),
+                        "email": str(emp.email),
+                        
+                        # Role
+                        "department": str(emp.department or "Unassigned"),
+                        "job_title": str(emp.job_title or "Not specified"),
+                        
+                        # Performance
+                        "performance_score": float(emp.performance_score or 75.0),
+                        "performance_range": str(get_performance_range(emp.performance_score)),
+                        
+                        # Experience
+                        "total_exp": float(emp.total_exp or 0),
+                        "experience_level": str(get_experience_level(emp.total_exp)),
+                        
+                        # Skills
+                        "skill_count": len(emp.skills) if emp.skills else 0,
+                        "top_skill_1": str(top_skills[0]) if len(top_skills) > 0 else "",
+                        "top_skill_2": str(top_skills[1]) if len(top_skills) > 1 else "",
+                        "top_skill_3": str(top_skills[2]) if len(top_skills) > 2 else "",
+                        
+                        # Projects
+                        "active_projects": int(project_count),
+                        "available_for_projects": bool(is_available_for_projects(employee_id)),
+                        
+                        # Status
+                        "status": str(emp.status or "Active"),
+                        
+                        # Profile
+                        "has_resume": True,
+                        "has_profile_pic": bool(emp.profile_pic),
                     }
-                )
-                documents.append(doc)
+                    
+                    # Add performance metrics if available
+                    if metric:
+                        enriched_metadata.update({
+                            "attendance_score": float(metric.attendance_score),
+                            "task_completion_score": float(metric.task_completion_score),
+                            "quality_score": float(metric.quality_score),
+                            "punctuality_score": float(metric.punctuality_score),
+                            "collaboration_score": float(metric.collaboration_score),
+                            "productivity_score": float(metric.productivity_score),
+                            "days_present": int(metric.days_present),
+                            "days_total": int(metric.days_total),
+                            "tasks_completed": int(metric.tasks_completed),
+                            "tasks_assigned": int(metric.tasks_assigned),
+                        })
+                    
+                    # Merge enriched metadata with base
+                    base_metadata.update(enriched_metadata)
+                    print(f"  ✓ Added {len(enriched_metadata)} metadata fields from database")
+                else:
+                    print(f"  ⚠️  Employee {employee_id} not found in database, using basic metadata")
                 
-            elif file_path.endswith('.docx'):
-                loader = Docx2txtLoader(file_path)
-                docs = loader.load()
-                for doc in docs:
-                    doc.metadata.update({
-                        "employee_id": employee_id,
-                        "document_type": "resume",
-                        "file_type": "docx",
-                        "filename": filename
-                    })
-                documents.extend(docs)
-                
-            elif file_path.endswith('.doc'):
-                try:
-                    loader = UnstructuredWordDocumentLoader(file_path)
+                # Load resume content based on file type
+                if file_path.endswith('.pdf'):
+                    loader = PyPDFLoader(file_path)
+                    pages = loader.load()
+                    combined_text = "\n\n".join([page.page_content for page in pages])
+                    doc = Document(
+                        page_content=combined_text,
+                        metadata=base_metadata  # 🔥 WITH ENRICHED METADATA
+                    )
+                    documents.append(doc)
+                    
+                elif file_path.endswith('.docx'):
+                    loader = Docx2txtLoader(file_path)
                     docs = loader.load()
                     for doc in docs:
-                        doc.metadata.update({
-                            "employee_id": employee_id,
-                            "document_type": "resume",
-                            "file_type": "doc",
-                            "filename": filename
-                        })
+                        doc.metadata = base_metadata  # 🔥 WITH ENRICHED METADATA
                     documents.extend(docs)
-                except Exception as e:
-                    print(f"  ⚠️  Warning: Could not load .doc file {filename}: {e}")
-            
-            print(f"  ✓ Successfully loaded resume for {employee_id}")
-            
-        except Exception as e:
-            print(f"  ✗ Error loading resume {filename}: {e}")
-            continue
+                    
+                elif file_path.endswith('.doc'):
+                    try:
+                        loader = UnstructuredWordDocumentLoader(file_path)
+                        docs = loader.load()
+                        for doc in docs:
+                            doc.metadata = base_metadata  # 🔥 WITH ENRICHED METADATA
+                        documents.extend(docs)
+                    except Exception as e:
+                        print(f"  ⚠️  Warning: Could not load .doc file {filename}: {e}")
+                
+                print(f"  ✓ Successfully loaded resume for {employee_id}")
+                
+            except Exception as e:
+                print(f"  ✗ Error loading resume {filename}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
     
     print(f"\nTotal resume documents loaded: {len(documents)}")
     return documents
@@ -141,7 +263,7 @@ def load_all_resumes(folder_path):
 # 3. NEW: LOAD PERFORMANCE METRICS FROM DATABASE
 # -----------------------------------------------------------
 def load_performance_metrics():
-    """Load performance metrics from database and convert to documents"""
+    """Load performance metrics with ENRICHED METADATA"""
     documents = []
     
     with app.app_context():
@@ -162,7 +284,14 @@ def load_performance_metrics():
                     print(f"  ⚠️  No metrics found for {emp.employee_id}, skipping...")
                     continue
                 
-                # Create comprehensive performance text
+                # Get project count
+                project_count = ProjectMember.query.filter_by(
+                    employee_id=emp.employee_id
+                ).count()
+                
+                top_skills = extract_top_skills(emp, limit=5)
+                
+                # Create performance document (keep existing text format)
                 performance_text = f"""
 EMPLOYEE PERFORMANCE REPORT
 ===========================
@@ -187,95 +316,104 @@ DETAILED METRICS:
    - Tasks Completed: {metric.tasks_completed} out of {metric.tasks_assigned} assigned tasks
    - Completion Rate: {(metric.tasks_completed/metric.tasks_assigned*100):.1f}%
    - On-Time Delivery: {metric.on_time_completion}%
-   - This employee {'consistently delivers on time' if metric.on_time_completion >= 90 else 'usually meets deadlines' if metric.on_time_completion >= 75 else 'struggles with deadlines'}
 
 3. QUALITY OF WORK (Score: {metric.quality_score}/100)
    - Bug/Error Rate: {metric.bug_rate}%
    - Peer Review Rating: {metric.review_rating}/5.0
    - Rework Required: {metric.rework_required}%
-   - Work quality is {'outstanding' if metric.quality_score >= 90 else 'good' if metric.quality_score >= 75 else 'acceptable' if metric.quality_score >= 60 else 'below standard'}
 
 4. PUNCTUALITY (Score: {metric.punctuality_score}/100)
    - Meeting Attendance: {metric.meeting_attendance}%
    - Deadline Adherence: {metric.deadline_adherence}%
-   - This employee is {'very reliable' if metric.punctuality_score >= 90 else 'generally punctual' if metric.punctuality_score >= 75 else 'sometimes late'}
 
 5. COLLABORATION (Score: {metric.collaboration_score}/100)
    - Peer Reviews Conducted: {metric.peer_reviews}
    - Team Contributions: {metric.team_contributions}
    - Communication Rating: {metric.communication_rating}/5.0
-   - Team collaboration is {'excellent' if metric.collaboration_score >= 90 else 'good' if metric.collaboration_score >= 75 else 'adequate'}
 
 6. PRODUCTIVITY (Score: {metric.productivity_score}/100)
    - Lines of Code: {metric.lines_of_code}
    - Git Commits: {metric.commits}
    - Story Points Completed: {metric.story_points}
-   - Productivity level is {'very high' if metric.productivity_score >= 90 else 'good' if metric.productivity_score >= 75 else 'average'}
-
-PERFORMANCE SUMMARY:
-{emp.full_name} has an overall performance score of {metric.calculate_overall_score()}/100.
 """
                 
-                # Add performance trend analysis
-                if metric.calculate_overall_score() >= 85:
-                    performance_text += f"\nThis employee is a HIGH PERFORMER and excels in their role."
-                elif metric.calculate_overall_score() >= 70:
-                    performance_text += f"\nThis employee meets expectations and performs satisfactorily."
-                else:
-                    performance_text += f"\nThis employee needs performance improvement and additional support."
-                
-                # Add strengths and areas for improvement
-                scores = {
-                    'Attendance': metric.attendance_score,
-                    'Task Completion': metric.task_completion_score,
-                    'Quality': metric.quality_score,
-                    'Punctuality': metric.punctuality_score,
-                    'Collaboration': metric.collaboration_score,
-                    'Productivity': metric.productivity_score
+                # 🔥 ENRICHED METADATA
+                metadata = {
+                    # Identity
+                    "employee_id": str(emp.employee_id),
+                    "employee_name": str(emp.full_name),
+                    "email": str(emp.email),
+                    
+                    # Document type
+                    "document_type": "performance_metrics",
+                    "month": str(metric.month),
+                    "source": "performance_database",
+                    
+                    # Role
+                    "department": str(emp.department or "Unknown"),
+                    "job_title": str(emp.job_title or "Not specified"),
+                    
+                    # Performance scores
+                    "overall_score": float(metric.calculate_overall_score()),
+                    "performance_range": str(get_performance_range(metric.calculate_overall_score())),
+                    "attendance_score": float(metric.attendance_score),
+                    "task_completion_score": float(metric.task_completion_score),
+                    "quality_score": float(metric.quality_score),
+                    "punctuality_score": float(metric.punctuality_score),
+                    "collaboration_score": float(metric.collaboration_score),
+                    "productivity_score": float(metric.productivity_score),
+                    
+                    # Detailed metrics
+                    "days_present": int(metric.days_present),
+                    "days_total": int(metric.days_total),
+                    "late_arrivals": int(metric.late_arrivals),
+                    "tasks_completed": int(metric.tasks_completed),
+                    "tasks_assigned": int(metric.tasks_assigned),
+                    "on_time_completion": float(metric.on_time_completion),
+                    
+                    # Experience & Skills
+                    "total_exp": float(emp.total_exp or 0),
+                    "experience_level": str(get_experience_level(emp.total_exp)),
+                    "skill_count": len(emp.skills) if emp.skills else 0,
+                    "top_skill_1": str(top_skills[0]) if len(top_skills) > 0 else "",
+                    "top_skill_2": str(top_skills[1]) if len(top_skills) > 1 else "",
+                    "top_skill_3": str(top_skills[2]) if len(top_skills) > 2 else "",
+                    
+                    # Projects
+                    "active_projects": int(project_count),
+                    "available_for_projects": bool(is_available_for_projects(emp.employee_id)),
+                    
+                    # Status
+                    "status": str(emp.status or "Active"),
+                    
+                    # Timestamp
+                    "last_updated": metric.last_updated.isoformat(),
                 }
-                
-                strengths = [k for k, v in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:2]]
-                improvements = [k for k, v in sorted(scores.items(), key=lambda x: x[1])[:2]]
-                
-                performance_text += f"\n\nSTRENGTHS: {', '.join(strengths)}"
-                performance_text += f"\nAREAS FOR IMPROVEMENT: {', '.join(improvements)}"
-                
-                # Add notes if available
-                if metric.notes:
-                    performance_text += f"\n\nADDITIONAL NOTES:\n{metric.notes}"
                 
                 # Create document
                 doc = Document(
                     page_content=performance_text,
-                    metadata={
-                        "employee_id": emp.employee_id,
-                        "employee_name": emp.full_name,
-                        "document_type": "performance_metrics",
-                        "month": metric.month,
-                        "overall_score": metric.calculate_overall_score(),
-                        "department": emp.department or "Unknown",
-                        "last_updated": metric.last_updated.isoformat(),
-                        "source": "performance_database"
-                    }
+                    metadata=metadata  # 🔥 WITH ENRICHED METADATA
                 )
                 
                 documents.append(doc)
-                print(f"  ✓ Loaded performance data for {emp.full_name} ({emp.employee_id})")
+                print(f"  ✓ Loaded performance data for {emp.full_name} with {len(metadata)} metadata fields")
                 
             except Exception as e:
                 print(f"  ✗ Error loading performance for {emp.employee_id}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         print(f"\nTotal performance documents loaded: {len(documents)}")
     
     return documents
 
-
 # -----------------------------------------------------------
 # 4. NEW: LOAD PROJECT ASSIGNMENTS FROM DATABASE
 # -----------------------------------------------------------
 def load_project_assignments():
-    """Load project assignments from database and convert to documents"""
+    """Load project assignments with ENRICHED METADATA"""
     documents = []
     
     with app.app_context():
@@ -292,7 +430,7 @@ def load_project_assignments():
                     print(f"  ⚠️  No members for project {project.project_code}, skipping...")
                     continue
                 
-                # Build project document
+                # Build project document (keep existing text format)
                 project_text = f"""
 PROJECT INFORMATION
 ===================
@@ -309,11 +447,19 @@ TEAM MEMBERS:
 """
                 
                 member_details = []
+                member_ids = []
+                departments = []
+                avg_performance = 0
+                
                 for member in members:
                     emp = Employee.query.filter_by(employee_id=member.employee_id).first()
                     if emp:
-                        # Get performance score
                         performance = emp.performance_score or 75.0
+                        avg_performance += performance
+                        member_ids.append(emp.employee_id)
+                        
+                        if emp.department and emp.department not in departments:
+                            departments.append(emp.department)
                         
                         member_info = f"""
 - {emp.full_name} ({emp.employee_id})
@@ -327,30 +473,51 @@ TEAM MEMBERS:
                         project_text += member_info
                         member_details.append(emp.full_name)
                 
+                avg_performance = avg_performance / len(members) if members else 0
+                
                 project_text += f"\n\nPROJECT SUMMARY:\n"
                 project_text += f"The {project.name} project (code: {project.project_code}) "
                 project_text += f"is currently {project.status.lower()} with a team of {len(members)} members. "
                 project_text += f"Team members include: {', '.join(member_details)}."
                 
+                # 🔥 ENRICHED METADATA
+                metadata = {
+                    # Project identity
+                    "project_code": str(project.project_code),
+                    "project_name": str(project.name),
+                    "document_type": "project_assignment",
+                    "source": "project_database",
+                    
+                    # Project details
+                    "status": str(project.status),
+                    "team_size": int(len(members)),
+                    "created_at": project.created_at.isoformat(),
+                    
+                    # Team composition
+                    "member_ids": ",".join(member_ids),  # Comma-separated list
+                    "departments": ",".join(departments),  # Cross-departmental info
+                    "avg_team_performance": float(round(avg_performance, 1)),
+                    "team_performance_range": str(get_performance_range(avg_performance)),
+                    
+                    # Project classification
+                    "is_active": bool(project.status == "Active"),
+                    "is_large_team": bool(len(members) > 5),
+                    "is_cross_departmental": bool(len(departments) > 1),
+                }
+                
                 # Create document
                 doc = Document(
                     page_content=project_text,
-                    metadata={
-                        "project_code": project.project_code,
-                        "project_name": project.name,
-                        "document_type": "project_assignment",
-                        "status": project.status,
-                        "team_size": len(members),
-                        "created_at": project.created_at.isoformat(),
-                        "source": "project_database"
-                    }
+                    metadata=metadata  # 🔥 WITH ENRICHED METADATA
                 )
                 
                 documents.append(doc)
-                print(f"  ✓ Loaded project data for {project.name} ({project.project_code})")
+                print(f"  ✓ Loaded project data for {project.name} with {len(metadata)} metadata fields")
                 
             except Exception as e:
                 print(f"  ✗ Error loading project {project.project_code}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         print(f"\nTotal project documents loaded: {len(documents)}")
