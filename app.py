@@ -1648,6 +1648,216 @@ def ai_reset():
         "success": True,
         "message": "Chat session reset"
     }), 200
+    
+# ======================================================
+# AI PERFORMANCE REVIEW GENERATION
+# ======================================================
+# ======================================================
+# AI PERFORMANCE REVIEW GENERATION (RAG-POWERED)
+# ======================================================
+
+# ======================================================
+# AI PERFORMANCE REVIEW GENERATION (RAG-POWERED)
+# ======================================================
+
+@app.route("/reviews")
+def reviews_page():
+    """Performance review generation page"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    return render_template("reviews_rag.html")
+
+
+@app.route("/api/reviews/search-employees", methods=["POST"])
+def search_employees_for_review():
+    """Search employees for review generation"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        query = data.get("query", "").strip().lower()
+        
+        employees = Employee.query.all()
+        
+        if query:
+            employees = [emp for emp in employees 
+                        if query in emp.full_name.lower() 
+                        or query in emp.employee_id.lower()
+                        or (emp.department and query in emp.department.lower())]
+        
+        results = []
+        for emp in employees:
+            results.append({
+                "employee_id": emp.employee_id,
+                "full_name": emp.full_name,
+                "department": emp.department or "N/A",
+                "job_title": emp.job_title or "N/A",
+                "performance_score": emp.performance_score or 75.0
+            })
+        
+        return jsonify({
+            "success": True,
+            "employees": results[:20]  # Limit to 20 results
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in search_employees_for_review: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/reviews/generate-rag", methods=["POST"])
+def generate_review_rag():
+    """Generate AI-powered performance review using RAG"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        employee_query = data.get("employee_query", "")  # e.g., "EMP001" or "John Doe"
+        review_type = data.get("review_type", "comprehensive")
+        
+        if not employee_query:
+            return jsonify({"success": False, "error": "Employee query required"}), 400
+        
+        print(f"\n🤖 Generating RAG-powered review for: {employee_query}")
+        
+        # Initialize retriever and LLM
+        retriever = get_retriever(k=15)  # Get more docs for comprehensive review
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.4)  # Higher temp for creative writing
+        
+        # Build metadata filter for employee
+        where_filter = None
+        if employee_query.startswith("EMP"):
+            where_filter = {"employee_id": employee_query}
+        
+        # Step 1: Retrieve relevant documents from vector DB
+        print(f"  🔍 Retrieving documents from vector DB...")
+        if where_filter:
+            embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+            vectordb = Chroma(
+                persist_directory=CHROMA_DIR,
+                embedding_function=embeddings
+            )
+            docs = vectordb.similarity_search(
+                f"performance review information for {employee_query}",
+                k=15,
+                filter=where_filter
+            )
+        else:
+            docs = retriever.invoke(f"employee information performance metrics for {employee_query}")
+        
+        print(f"  ✅ Retrieved {len(docs)} documents")
+        
+        if not docs:
+            return jsonify({
+                "success": False,
+                "error": f"No information found for employee: {employee_query}. Make sure to run add_rag.py first."
+            }), 404
+        
+        # Step 2: Extract context from retrieved documents
+        context_parts = []
+        employee_info = {}
+        
+        for doc in docs:
+            context_parts.append(doc.page_content)
+            
+            # Extract employee metadata from first document
+            if not employee_info and doc.metadata:
+                employee_info = {
+                    "employee_id": doc.metadata.get("employee_id", ""),
+                    "full_name": doc.metadata.get("full_name", doc.metadata.get("employee_name", "")),
+                    "department": doc.metadata.get("department", "N/A"),
+                    "job_title": doc.metadata.get("job_title", "N/A"),
+                    "overall_score": doc.metadata.get("overall_score", doc.metadata.get("performance_score", 0))
+                }
+        
+        combined_context = "\n---\n".join(context_parts[:10])  # Use top 10 most relevant
+        
+        print(f"  📄 Built context from {len(context_parts[:10])} documents")
+        
+        # Step 3: Generate review using LLM with RAG context
+        review_type_instructions = {
+            "comprehensive": "a comprehensive performance review covering all aspects",
+            "quarterly": "a quarterly performance review focusing on the last 3 months",
+            "annual": "an annual performance review summarizing the entire year"
+        }
+        
+        prompt = f"""You are a professional HR manager writing {review_type_instructions[review_type]}.
+
+RETRIEVED EMPLOYEE DATA FROM DATABASE:
+{combined_context}
+
+Based ONLY on the information provided above, write a detailed, professional performance review with these sections:
+
+1. EXECUTIVE SUMMARY
+   - Overall performance assessment (2-3 sentences)
+   - Key highlight or achievement
+
+2. STRENGTHS AND ACHIEVEMENTS
+   - List 4-5 specific strengths with concrete examples from the data
+   - Include metrics and numbers where available (attendance %, task completion rate, quality scores, etc.)
+   - Mention specific projects or contributions
+
+3. AREAS FOR IMPROVEMENT
+   - Identify 2-3 areas that need attention based on the metrics
+   - Be constructive and specific
+   - Reference actual performance data (e.g., "attendance score of X indicates...")
+
+4. PERFORMANCE METRICS ANALYSIS
+   - Analyze key metrics: attendance, task completion, quality, collaboration, productivity
+   - Compare to standards and explain what the numbers mean
+   - Highlight both strong and weak areas
+
+5. RECOMMENDATIONS FOR DEVELOPMENT
+   - Suggest 3-4 specific, actionable development areas
+   - Based on current skills and performance gaps
+   - Include training or skill development suggestions
+
+6. GOALS FOR NEXT PERIOD
+   - Set 3-4 SMART goals based on current performance
+   - Make them specific and measurable
+   - Align with areas for improvement
+
+IMPORTANT GUIDELINES:
+- Use actual data, names, numbers, and metrics from the provided information
+- Be professional, balanced, and constructive
+- If specific data is mentioned (like "attended 20/22 days"), use those exact numbers
+- Maintain a motivating and supportive tone
+- Keep the review between 600-800 words
+- Use proper formatting with clear sections
+
+PERFORMANCE REVIEW:"""
+        
+        print(f"  🧠 Generating review with LLM...")
+        response = llm.invoke(prompt)
+        review_text = response.content.strip()
+        
+        print(f"  ✅ Review generated ({len(review_text)} characters)")
+        
+        return jsonify({
+            "success": True,
+            "review": review_text,
+            "employee": employee_info,
+            "sources_used": len(docs),
+            "review_type": review_type,
+            "generated_at": datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error generating RAG review: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 # ======================================================
 # HELPER FUNCTIONS FOR DATA PREPARATION
 # ======================================================

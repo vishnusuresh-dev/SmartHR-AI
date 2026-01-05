@@ -393,7 +393,7 @@ DETAILED METRICS:
                 # Create document
                 doc = Document(
                     page_content=performance_text,
-                    metadata=metadata  # 🔥 WITH ENRICHED METADATA
+                    metadata=metadata  
                 )
                 
                 documents.append(doc)
