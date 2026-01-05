@@ -13,6 +13,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
 import os
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 load_dotenv()
 
@@ -1652,13 +1654,7 @@ def ai_reset():
 # ======================================================
 # AI PERFORMANCE REVIEW GENERATION
 # ======================================================
-# ======================================================
-# AI PERFORMANCE REVIEW GENERATION (RAG-POWERED)
-# ======================================================
 
-# ======================================================
-# AI PERFORMANCE REVIEW GENERATION (RAG-POWERED)
-# ======================================================
 
 @app.route("/reviews")
 def reviews_page():
@@ -1852,6 +1848,502 @@ PERFORMANCE REVIEW:"""
         
     except Exception as e:
         print(f"❌ Error generating RAG review: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+        
+def get_embedding_for_text(text, embeddings_model):
+    """Get embedding vector for a given text"""
+    try:
+        return embeddings_model.embed_query(text)
+    except Exception as e:
+        print(f"Error getting embedding: {e}")
+        return None
+
+
+def find_best_matches_semantic(query, match_type="employees", top_k=10, filters=None):
+    """
+    Semantic matching using vector similarity
+    
+    Args:
+        query: Natural language query (e.g., "Python developer with ML experience")
+        match_type: "employees", "projects", or "skills"
+        top_k: Number of top matches to return
+        filters: Optional dict with filters (e.g., {"department": "Engineering"})
+    
+    Returns:
+        List of matched items with similarity scores
+    """
+    try:
+        print(f"\n🔍 Smart Matching Query: {query}")
+        print(f"   Type: {match_type}, Top K: {top_k}")
+        
+        # Initialize embeddings and vector DB
+        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        vectordb = Chroma(
+            persist_directory=CHROMA_DIR,
+            embedding_function=embeddings
+        )
+        
+        # Build metadata filter based on match type
+        where_filter = {}
+        
+        if match_type == "employees":
+            where_filter["document_type"] = "resume"
+        elif match_type == "projects":
+            where_filter["document_type"] = "project_assignment"
+        elif match_type == "performance":
+            where_filter["document_type"] = "performance_metrics"
+        
+        # Add custom filters
+        if filters:
+            where_filter.update(filters)
+        
+        print(f"   Using filters: {where_filter}")
+        
+        # Perform semantic search with metadata filtering
+        results = vectordb.similarity_search_with_score(
+            query,
+            k=top_k * 3,  # Get more results for deduplication
+            filter=where_filter if where_filter else None
+        )
+        
+        print(f"   Retrieved {len(results)} initial results")
+        
+        # Process and deduplicate results by employee_id or project_code
+        seen_ids = set()
+        matches = []
+        
+        for doc, score in results:
+            # Deduplicate by ID
+            if match_type == "employees":
+                item_id = doc.metadata.get("employee_id")
+            elif match_type == "projects":
+                item_id = doc.metadata.get("project_code")
+            else:
+                item_id = doc.metadata.get("employee_id")
+            
+            if item_id and item_id in seen_ids:
+                continue
+            
+            if item_id:
+                seen_ids.add(item_id)
+            
+            # Calculate similarity percentage (ChromaDB uses distance, lower is better)
+            # Convert distance to similarity (0-100%)
+            similarity_score = max(0, min(100, (1 - score) * 100))
+            
+            match_data = {
+                "id": item_id,
+                "similarity_score": round(similarity_score, 2),
+                "distance": round(score, 4),
+                "metadata": doc.metadata,
+                "content_preview": doc.page_content[:300]
+            }
+            
+            matches.append(match_data)
+            
+            if len(matches) >= top_k:
+                break
+        
+        # Sort by similarity score (descending)
+        matches.sort(key=lambda x: x['similarity_score'], reverse=True)
+        
+        print(f"   ✅ Returning {len(matches)} unique matches")
+        
+        return matches
+        
+    except Exception as e:
+        print(f"❌ Error in semantic matching: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def enrich_employee_matches(matches):
+    """Enrich employee match results with live database data"""
+    enriched = []
+    
+    with app.app_context():
+        for match in matches:
+            employee_id = match.get("id")
+            if not employee_id:
+                continue
+            
+            # Get employee from database
+            emp = Employee.query.filter_by(employee_id=employee_id).first()
+            if not emp:
+                continue
+            
+            # Get current metrics
+            current_month = datetime.utcnow().strftime("%Y-%m")
+            metric = PerformanceMetric.query.filter_by(
+                employee_id=employee_id,
+                month=current_month
+            ).first()
+            
+            # Get project count
+            project_count = ProjectMember.query.filter_by(
+                employee_id=employee_id
+            ).count()
+            
+            # Build enriched result
+            enriched_data = {
+                "employee_id": emp.employee_id,
+                "full_name": emp.full_name,
+                "email": emp.email,
+                "department": emp.department or "N/A",
+                "job_title": emp.job_title or "N/A",
+                "total_exp": emp.total_exp or 0,
+                "performance_score": emp.performance_score or 75.0,
+                "active_projects": project_count,
+                "skills": list(emp.skills.keys()) if emp.skills else [],
+                "top_skills": sorted(
+                    emp.skills.items(), 
+                    key=lambda x: x[1], 
+                    reverse=True
+                )[:5] if emp.skills else [],
+                "profile_pic": emp.profile_pic,
+                "status": emp.status,
+                "similarity_score": match["similarity_score"],
+                "match_distance": match["distance"],
+                "available": project_count < 3,  # Available if less than 3 projects
+            }
+            
+            # Add performance metrics if available
+            if metric:
+                enriched_data["metrics"] = {
+                    "attendance": metric.attendance_score,
+                    "task_completion": metric.task_completion_score,
+                    "quality": metric.quality_score,
+                    "collaboration": metric.collaboration_score
+                }
+            
+            enriched.append(enriched_data)
+    
+    return enriched
+
+
+def enrich_project_matches(matches):
+    """Enrich project match results with live database data"""
+    enriched = []
+    
+    with app.app_context():
+        for match in matches:
+            project_code = match.get("id")
+            if not project_code:
+                continue
+            
+            # Get project from database
+            project = Project.query.filter_by(project_code=project_code).first()
+            if not project:
+                continue
+            
+            # Get team members
+            members = ProjectMember.query.filter_by(project_id=project.id).all()
+            team_data = []
+            
+            for member in members:
+                emp = Employee.query.filter_by(employee_id=member.employee_id).first()
+                if emp:
+                    team_data.append({
+                        "employee_id": emp.employee_id,
+                        "full_name": emp.full_name,
+                        "role": member.role,
+                        "performance": emp.performance_score
+                    })
+            
+            # Build enriched result
+            enriched_data = {
+                "project_code": project.project_code,
+                "name": project.name,
+                "description": project.description,
+                "status": project.status,
+                "team_size": len(members),
+                "team_members": team_data,
+                "similarity_score": match["similarity_score"],
+                "match_distance": match["distance"],
+                "created_at": project.created_at.isoformat()
+            }
+            
+            enriched.append(enriched_data)
+    
+    return enriched
+
+
+# -----------------------------------------------------------
+# SMART MATCHING API ROUTES
+# -----------------------------------------------------------
+
+@app.route("/smart-matching")
+def smart_matching_page():
+    """Smart matching interface page"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    return render_template("smart_matching.html")
+
+
+@app.route("/api/smart-matching/search", methods=["POST"])
+def api_smart_matching_search():
+    """
+    Main smart matching API endpoint
+    
+    Request body:
+    {
+        "query": "Python developer with ML experience",
+        "match_type": "employees",  // or "projects"
+        "top_k": 10,
+        "filters": {
+            "department": "Engineering",
+            "performance_range": "high"
+        }
+    }
+    """
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+        
+        query = data.get("query", "").strip()
+        match_type = data.get("match_type", "employees")
+        top_k = int(data.get("top_k", 10))
+        filters = data.get("filters", {})
+        
+        if not query:
+            return jsonify({"success": False, "error": "Query is required"}), 400
+        
+        if match_type not in ["employees", "projects"]:
+            return jsonify({"success": False, "error": "Invalid match_type"}), 400
+        
+        print(f"\n🎯 Smart Matching Request:")
+        print(f"   Query: {query}")
+        print(f"   Type: {match_type}")
+        print(f"   Filters: {filters}")
+        
+        # Perform semantic matching
+        matches = find_best_matches_semantic(
+            query=query,
+            match_type=match_type,
+            top_k=top_k,
+            filters=filters
+        )
+        
+        # Enrich with live database data
+        if match_type == "employees":
+            enriched_matches = enrich_employee_matches(matches)
+        elif match_type == "projects":
+            enriched_matches = enrich_project_matches(matches)
+        else:
+            enriched_matches = matches
+        
+        print(f"   ✅ Returning {len(enriched_matches)} enriched matches")
+        
+        return jsonify({
+            "success": True,
+            "query": query,
+            "match_type": match_type,
+            "total_matches": len(enriched_matches),
+            "matches": enriched_matches,
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error in smart matching API: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/smart-matching/suggest", methods=["POST"])
+def api_smart_matching_suggest():
+    """
+    Suggest best candidates for a project or role
+    
+    Request body:
+    {
+        "project_id": "PROJ123",  // Optional
+        "requirements": {
+            "skills": ["Python", "Machine Learning"],
+            "min_experience": 3,
+            "department": "Engineering"
+        },
+        "top_k": 5
+    }
+    """
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        
+        requirements = data.get("requirements", {})
+        top_k = int(data.get("top_k", 5))
+        project_id = data.get("project_id")
+        
+        # Build search query from requirements
+        query_parts = []
+        
+        if "skills" in requirements and requirements["skills"]:
+            skills_str = ", ".join(requirements["skills"])
+            query_parts.append(f"Skills: {skills_str}")
+        
+        if "min_experience" in requirements:
+            query_parts.append(f"Experience: {requirements['min_experience']}+ years")
+        
+        if "role" in requirements:
+            query_parts.append(f"Role: {requirements['role']}")
+        
+        query = " | ".join(query_parts) if query_parts else "Best available candidates"
+        
+        # Build filters
+        filters = {}
+        if "department" in requirements:
+            filters["department"] = requirements["department"]
+        
+        if "performance_range" in requirements:
+            filters["performance_range"] = requirements["performance_range"]
+        
+        # Perform matching
+        matches = find_best_matches_semantic(
+            query=query,
+            match_type="employees",
+            top_k=top_k,
+            filters=filters
+        )
+        
+        # Enrich results
+        candidates = enrich_employee_matches(matches)
+        
+        # Filter by additional requirements
+        filtered_candidates = []
+        for candidate in candidates:
+            # Check minimum experience
+            if "min_experience" in requirements:
+                if candidate["total_exp"] < requirements["min_experience"]:
+                    continue
+            
+            # Check required skills
+            if "skills" in requirements and requirements["skills"]:
+                candidate_skills = [s.lower() for s in candidate["skills"]]
+                required_skills = [s.lower() for s in requirements["skills"]]
+                has_all_skills = all(
+                    any(req in cs for cs in candidate_skills) 
+                    for req in required_skills
+                )
+                if not has_all_skills:
+                    continue
+            
+            filtered_candidates.append(candidate)
+        
+        return jsonify({
+            "success": True,
+            "query": query,
+            "requirements": requirements,
+            "total_matches": len(filtered_candidates),
+            "candidates": filtered_candidates[:top_k],
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error in smart matching suggest: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/smart-matching/explain", methods=["POST"])
+def api_smart_matching_explain():
+    """
+    Get AI explanation for why a match was made
+    Uses LLaMA to generate natural language explanation
+    """
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        
+        employee_id = data.get("employee_id")
+        query = data.get("query")
+        
+        if not employee_id or not query:
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        # Get employee data
+        with app.app_context():
+            emp = Employee.query.filter_by(employee_id=employee_id).first()
+            if not emp:
+                return jsonify({"success": False, "error": "Employee not found"}), 404
+            
+            # Get performance metrics
+            current_month = datetime.utcnow().strftime("%Y-%m")
+            metric = PerformanceMetric.query.filter_by(
+                employee_id=employee_id,
+                month=current_month
+            ).first()
+            
+            # Build context
+            context = f"""
+Employee: {emp.full_name} ({emp.employee_id})
+Department: {emp.department}
+Job Title: {emp.job_title}
+Experience: {emp.total_exp} years
+Skills: {', '.join(emp.skills.keys()) if emp.skills else 'None'}
+Performance Score: {emp.performance_score}/100
+"""
+            
+            if metric:
+                context += f"""
+Attendance: {metric.attendance_score}/100
+Task Completion: {metric.task_completion_score}/100
+Quality: {metric.quality_score}/100
+Collaboration: {metric.collaboration_score}/100
+"""
+        
+        # Generate explanation using LLaMA
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
+        
+        prompt = f"""You are an HR AI assistant. Explain in 2-3 sentences why this employee is a good match for the given requirement.
+
+REQUIREMENT: {query}
+
+EMPLOYEE PROFILE:
+{context}
+
+Provide a concise, professional explanation focusing on:
+1. Key matching skills/experience
+2. Relevant performance metrics
+3. Why they're suitable
+
+EXPLANATION:"""
+        
+        response = llm.invoke(prompt)
+        explanation = response.content.strip()
+        
+        return jsonify({
+            "success": True,
+            "employee_id": employee_id,
+            "query": query,
+            "explanation": explanation,
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error generating explanation: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
