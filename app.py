@@ -835,7 +835,7 @@ def submit():
         db.session.add(e)
         db.session.commit()
         
-        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
+        flash(f" Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
         return redirect("/employees")
         
     except Exception as ex:
@@ -870,58 +870,48 @@ def employees():
 
 @app.route("/delete_employee/<int:emp_id>", methods=["POST"])
 def delete_employee(emp_id):
-    """Delete an employee and cleanup related data including uploaded files"""
     if "user" not in session:
         return redirect("/login")
-    
+
     try:
-        # Find the employee
+        # 🔹 Get employee
         employee = Employee.query.get_or_404(emp_id)
-        employee_id = employee.employee_id
-        employee_name = employee.full_name
-        
-        # Delete uploaded files from filesystem
-        files_deleted = []
-        
-        # Delete resume file if exists
+        emp_employee_id = employee.employee_id
+        emp_name = employee.full_name
+
+        # 🔹 1. Delete performance metrics FIRST (IMPORTANT)
+        PerformanceMetric.query.filter_by(
+            employee_id=emp_employee_id
+        ).delete()
+
+        # 🔹 2. Delete project memberships
+        ProjectMember.query.filter_by(
+            employee_id=emp_employee_id
+        ).delete()
+
+        # 🔹 3. Delete resume file
         if employee.resume_path:
-            resume_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.resume_path)
-            if os.path.exists(resume_full_path):
-                try:
-                    os.remove(resume_full_path)
-                    files_deleted.append(f"resume: {employee.resume_path}")
-                except OSError as e:
-                    print(f"Error deleting resume file: {e}")
-        
-        # Delete profile picture if exists
+            resume_path = os.path.join(app.config["UPLOAD_FOLDER"], employee.resume_path)
+            if os.path.exists(resume_path):
+                os.remove(resume_path)
+
+        # 🔹 4. Delete profile picture
         if employee.profile_pic:
-            pic_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.profile_pic)
-            if os.path.exists(pic_full_path):
-                try:
-                    os.remove(pic_full_path)
-                    files_deleted.append(f"profile pic: {employee.profile_pic}")
-                except OSError as e:
-                    print(f"Error deleting profile picture: {e}")
-        
-        # Delete all project memberships for this employee
-        ProjectMember.query.filter_by(employee_id=employee_id).delete()
-        
-        # Delete the employee from database
+            pic_path = os.path.join(app.config["UPLOAD_FOLDER"], employee.profile_pic)
+            if os.path.exists(pic_path):
+                os.remove(pic_path)
+
+        # 🔹 5. Finally delete employee
         db.session.delete(employee)
         db.session.commit()
-        
-        # Create success message
-        success_msg = f"Employee {employee_name} deleted successfully"
-        if files_deleted:
-            success_msg += f" (Removed: {', '.join(files_deleted)})"
-        
-        flash(success_msg, "success")
-        
+
+        flash(f" Employee {emp_name} deleted successfully", "success")
+
     except Exception as e:
         db.session.rollback()
-        flash(f"Error deleting employee: {str(e)}", "danger")
-        print(f"ERROR in delete_employee: {str(e)}")
-    
+        flash(f"❌ Error deleting employee: {str(e)}", "danger")
+        print("DELETE ERROR:", e)
+
     return redirect("/employees")
 
 # ======================================================
