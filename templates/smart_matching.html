@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Matching - SmartHR AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .smart-matching-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .page-header h1 {
+            font-size: 2.5rem;
+            color: #1a1a2e;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header p {
+            font-size: 1.1rem;
+            color: #666;
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            margin-bottom: 2rem;
+        }
+
+        .back-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .loading-container {
+            text-align: center;
+            padding: 4rem 2rem;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .projects-grid {
+            display: grid;
+            gap: 2rem;
+        }
+
+        .project-section {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 2px solid #f0f0f0;
+            transition: all 0.3s ease;
+        }
+
+        .project-section:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .project-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .project-info {
+            flex: 1;
+        }
+
+        .project-code {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .project-name {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-bottom: 0.5rem;
+        }
+
+        .project-description {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .project-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #f0f4ff;
+            color: #667eea;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .project-status.active {
+            background: #d4f4dd;
+            color: #34a853;
+        }
+
+        .matching-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .match-btn {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .match-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .match-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .matches-count {
+            padding: 0.5rem 1rem;
+            background: #f0f4ff;
+            color: #667eea;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .matches-container {
+            margin-top: 1.5rem;
+            display: none;
+        }
+
+        .matches-container.active {
+            display: block;
+        }
+
+        .matches-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .matches-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .sort-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .sort-btn {
+            padding: 0.5rem 1rem;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .sort-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .matches-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .match-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.25rem;
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .match-card:hover {
+            transform: translateY(-2px);
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .match-card-header {
+            display: flex;
+            align-items: start;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .match-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .match-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .match-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 0.25rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .match-title {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+
+        .match-id {
+            font-size: 0.8rem;
+            color: #999;
+        }
+
+        .match-score-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .match-details {
+            display: grid;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .match-detail-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: #555;
+        }
+
+        .detail-icon {
+            width: 16px;
+            color: #667eea;
+            flex-shrink: 0;
+        }
+
+        .skills-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-bottom: 1rem;
+        }
+
+        .skill-tag {
+            padding: 0.25rem 0.6rem;
+            background: white;
+            color: #667eea;
+            border: 1px solid #667eea;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .match-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .why-match-btn {
+            padding: 0.5rem 1rem;
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .why-match-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .view-profile-link {
+            padding: 0.5rem 1rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .view-profile-link:hover {
+            background: #5568d3;
+        }
+
+        /* Explanation Modal */
+        .explanation-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .explanation-modal.active {
+            display: flex;
+        }
+
+        .explanation-content {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .explanation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .explanation-header h3 {
+            font-size: 1.5rem;
+            color: #1a1a2e;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .close-modal-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #999;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        .close-modal-btn:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .explanation-body {
+            line-height: 1.8;
+            color: #555;
+        }
+
+        .explanation-loading {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .explanation-loading .spinner {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 1rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #999;
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .availability-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .availability-badge.available {
+            background: #d4f4dd;
+            color: #34a853;
+        }
+
+        .availability-badge.busy {
+            background: #ffeaa7;
+            color: #d63031;
+        }
+
+        @media (max-width: 768px) {
+            .matches-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .project-header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .matching-controls {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .match-btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">🧠</div>
+                <div class="logo-text">
+                    <h1>Smart HR AI</h1>
+                </div>
+            </div>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard') }}">
+                    <button class="user-btn">Dashboard</button>
+                </a>
+                <a href="{{ url_for('employees') }}">
+                    <button class="user-btn">All Employees</button>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div class="smart-matching-container">
+        <a href="{{ url_for('dashboard') }}" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+            Back to Dashboard
+        </a>
+
+        <div class="page-header">
+            <h1>🧠 AI-Powered Smart Matching</h1>
+            <p>Automatically find the best candidates for each project using AI</p>
+        </div>
+
+        <div class="loading-container" id="loadingContainer">
+            <div class="spinner"></div>
+            <h3>Loading projects and analyzing candidates...</h3>
+        </div>
+
+        <div class="projects-grid" id="projectsGrid" style="display: none;">
+            <!-- Projects will be dynamically loaded here -->
+        </div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-icon">📋</div>
+            <h3>No Projects Found</h3>
+            <p>Create projects to start matching employees</p>
+            <a href="{{ url_for('projects') }}" class="match-btn" style="display: inline-flex; margin-top: 1rem;">
+                <i class="fas fa-plus"></i>
+                Create Project
+            </a>
+        </div>
+    </div>
+
+    <!-- Explanation Modal -->
+    <div class="explanation-modal" id="explanationModal">
+        <div class="explanation-content">
+            <div class="explanation-header">
+                <h3>
+                    <i class="fas fa-lightbulb"></i>
+                    Why This Match?
+                </h3>
+                <button class="close-modal-btn" onclick="closeExplanationModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="explanation-body" id="explanationBody">
+                <div class="explanation-loading">
+                    <div class="spinner"></div>
+                    <p>Generating explanation...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="dashboard-footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <span class="footer-logo">🧠</span>
+                <span class="footer-brand">Smart HR AI</span>
+            </div>
+            <div class="footer-right">
+                <span>&copy; 2026 Smart HR AI. All rights reserved.</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        let projectsData = {};
+
+        async function loadProjects() {
+            try {
+                const response = await fetch('/api/smart-matching/projects');
+                const data = await response.json();
+
+                if (data.success && data.projects.length > 0) {
+                    displayProjects(data.projects);
+                } else {
+                    showEmptyState();
+                }
+            } catch (error) {
+                console.error('Error loading projects:', error);
+                showEmptyState();
+            }
+        }
+
+        function displayProjects(projects) {
+            document.getElementById('loadingContainer').style.display = 'none';
+            document.getElementById('projectsGrid').style.display = 'grid';
+
+            const grid = document.getElementById('projectsGrid');
+            grid.innerHTML = '';
+
+            projects.forEach(project => {
+                const projectCard = createProjectCard(project);
+                grid.appendChild(projectCard);
+            });
+        }
+
+        function createProjectCard(project) {
+            const section = document.createElement('div');
+            section.className = 'project-section';
+            section.id = `project-${project.project_code}`;
+
+            const statusClass = project.status === 'Active' ? 'active' : '';
+
+            section.innerHTML = `
+                <div class="project-header">
+                    <div class="project-info">
+                        <span class="project-code">${project.project_code}</span>
+                        <h2 class="project-name">${project.name}</h2>
+                        <p class="project-description">${project.description || 'No description provided'}</p>
+                        <span class="project-status ${statusClass}">
+                            <i class="fas fa-circle"></i>
+                            ${project.status}
+                        </span>
+                    </div>
+                    <div class="matching-controls">
+                        <button class="match-btn" onclick="findMatches('${project.project_code}')" id="btn-${project.project_code}">
+                            <i class="fas fa-magic"></i>
+                            Find Matches
+                        </button>
+                    </div>
+                </div>
+
+                <div class="matches-container" id="matches-${project.project_code}">
+                    <div class="matches-header">
+                        <div class="matches-title">
+                            <i class="fas fa-users"></i>
+                            Best Matching Candidates
+                        </div>
+                        <div class="sort-options">
+                            <button class="sort-btn active" onclick="sortMatches('${project.project_code}', 'match')">
+                                <i class="fas fa-star"></i> Match
+                            </button>
+                            <button class="sort-btn" onclick="sortMatches('${project.project_code}', 'performance')">
+                                <i class="fas fa-chart-line"></i> Performance
+                            </button>
+                        </div>
+                    </div>
+                    <div class="matches-grid" id="grid-${project.project_code}">
+                        <!-- Matches will be loaded here -->
+                    </div>
+                </div>
+            `;
+
+            return section;
+        }
+
+        async function findMatches(projectCode) {
+            const btn = document.getElementById(`btn-${projectCode}`);
+            const matchesContainer = document.getElementById(`matches-${projectCode}`);
+            const grid = document.getElementById(`grid-${projectCode}`);
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Finding Matches...';
+            grid.innerHTML = '<div class="loading-container"><div class="spinner"></div><p>AI is analyzing candidates...</p></div>';
+            matchesContainer.classList.add('active');
+
+            try {
+                const response = await fetch('/api/smart-matching/find-matches', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ project_code: projectCode })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    projectsData[projectCode] = data.matches;
+                    displayMatches(projectCode, data.matches);
+                    btn.innerHTML = `<i class="fas fa-check"></i> ${data.matches.length} Matches Found`;
+                } else {
+                    grid.innerHTML = `<div class="empty-state"><p>No matches found</p></div>`;
+                    btn.innerHTML = '<i class="fas fa-magic"></i> Find Matches';
+                    btn.disabled = false;
+                }
+
+            } catch (error) {
+                console.error('Error finding matches:', error);
+                grid.innerHTML = `<div class="empty-state"><p>Error finding matches. Please try again.</p></div>`;
+                btn.innerHTML = '<i class="fas fa-magic"></i> Find Matches';
+                btn.disabled = false;
+            }
+        }
+
+        function displayMatches(projectCode, matches) {
+            const grid = document.getElementById(`grid-${projectCode}`);
+            grid.innerHTML = '';
+
+            if (matches.length === 0) {
+                grid.innerHTML = '<div class="empty-state"><p>No suitable candidates found</p></div>';
+                return;
+            }
+
+            matches.forEach(match => {
+                const card = createMatchCard(match, projectCode);
+                grid.appendChild(card);
+            });
+        }
+
+        function createMatchCard(match, projectCode) {
+            const card = document.createElement('div');
+            card.className = 'match-card';
+
+            const initials = match.full_name.split(' ').map(n => n[0]).join('').substring(0, 2);
+            const skills = match.top_skills || [];
+            const availabilityClass = match.available_for_projects ? 'available' : 'busy';
+            const availabilityText = match.available_for_projects ? 'Available' : 'Busy';
+
+            card.innerHTML = `
+                <div class="match-score-badge">
+                    <i class="fas fa-star"></i>
+                    ${match.match_score}%
+                </div>
+
+                <div class="match-card-header">
+                    <div class="match-avatar">${initials}</div>
+                    <div class="match-info">
+                        <div class="match-name">${match.full_name}</div>
+                        <div class="match-title">${match.job_title || 'N/A'}</div>
+                        <div class="match-id">${match.employee_id}</div>
+                    </div>
+                </div>
+
+                <div class="match-details">
+                    <div class="match-detail-row">
+                        <i class="fas fa-building detail-icon"></i>
+                        ${match.department || 'N/A'}
+                    </div>
+                    <div class="match-detail-row">
+                        <i class="fas fa-chart-line detail-icon"></i>
+                        Performance: ${match.performance_score}/100
+                    </div>
+                    <div class="match-detail-row">
+                        <i class="fas fa-briefcase detail-icon"></i>
+                        ${match.total_exp || 0} years experience
+                    </div>
+                    <div class="match-detail-row">
+                        <i class="fas fa-project-diagram detail-icon"></i>
+                        ${match.active_projects || 0} active projects
+                    </div>
+                </div>
+
+                ${skills.length > 0 ? `
+                    <div class="skills-preview">
+                        ${skills.slice(0, 4).map(skill => `<span class="skill-tag">${skill}</span>`).join('')}
+                    </div>
+                ` : ''}
+
+                <div class="match-actions">
+                    <button class="why-match-btn" onclick="showExplanation('${projectCode}', '${match.employee_id}')">
+                        <i class="fas fa-question-circle"></i>
+                        Why Match?
+                    </button>
+                    <span class="availability-badge ${availabilityClass}">
+                        ${availabilityText}
+                    </span>
+                    <a href="/employee/${match.employee_id}" class="view-profile-link">
+                        View <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+            `;
+
+            return card;
+        }
+
+        async function showExplanation(projectCode, employeeId) {
+            const modal = document.getElementById('explanationModal');
+            const body = document.getElementById('explanationBody');
+
+            modal.classList.add('active');
+            body.innerHTML = `
+                <div class="explanation-loading">
+                    <div class="spinner"></div>
+                    <p>Generating explanation...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/smart-matching/explain', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        project_code: projectCode,
+                        employee_id: employeeId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    body.innerHTML = `
+                        <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <strong>Employee:</strong> ${data.employee_name}<br>
+                            <strong>Project:</strong> ${data.project_name}<br>
+                            <strong>Match Score:</strong> ${data.match_score}%
+                        </div>
+                        <div style="line-height: 1.8;">
+                            ${data.explanation.replace(/\n/g, '<br>')}
+                        </div>
+                    `;
+                } else {
+                    body.innerHTML = `<p style="color: #d63031;">Error generating explanation. Please try again.</p>`;
+                }
+
+            } catch (error) {
+                console.error('Error fetching explanation:', error);
+                body.innerHTML = `<p style="color: #d63031;">Failed to load explanation. Please try again.</p>`;
+            }
+        }
+
+        function closeExplanationModal() {
+            document.getElementById('explanationModal').classList.remove('active');
+        }
+
+        function sortMatches(projectCode, sortBy) {
+            const matches = projectsData[projectCode];
+            if (!matches) return;
+
+            const buttons = document.querySelectorAll(`#matches-${projectCode} .sort-btn`);
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.closest('.sort-btn').classList.add('active');
+
+            let sorted = [...matches];
+
+            if (sortBy === 'match') {
+                sorted.sort((a, b) => b.match_score - a.match_score);
+            } else if (sortBy === 'performance') {
+                sorted.sort((a, b) => b.performance_score - a.performance_score);
+            }
+
+            displayMatches(projectCode, sorted);
+        }
+
+        function showEmptyState() {
+            document.getElementById('loadingContainer').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'block';
+        }
+
+        // Close modal on outside click
+        document.getElementById('explanationModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeExplanationModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeExplanationModal();
+            }
+        });
+
+        // Load projects on page load
+        window.addEventListener('DOMContentLoaded', loadProjects);
+    </script>
+</body>
+</html>

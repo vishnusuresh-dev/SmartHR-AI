@@ -767,6 +767,55 @@ def get_performance_trend(score):
     else:
         return "down"
 
+def extract_top_skills(emp, limit=5):
+    """Extract top N skills from employee"""
+    if not emp.skills:
+        return []
+    
+    if isinstance(emp.skills, dict):
+        sorted_skills = sorted(
+            emp.skills.items(), 
+            key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, 
+            reverse=True
+        )[:limit]
+        return [skill for skill, _ in sorted_skills]
+    
+    elif isinstance(emp.skills, list):
+        return emp.skills[:limit]
+    
+    return []
+
+
+def is_available_for_projects(employee_id, max_projects=3):
+    """Check if employee is available for new projects"""
+    project_count = ProjectMember.query.filter_by(
+        employee_id=employee_id
+    ).count()
+    return project_count < max_projects
+
+
+def get_performance_range(score):
+    """Categorize performance score into ranges"""
+    if score is None:
+        return "unknown"
+    if score >= 85:
+        return "high"
+    elif score >= 70:
+        return "medium"
+    else:
+        return "low"
+
+
+def get_experience_level(years):
+    """Categorize experience into levels"""
+    if years is None or years < 2:
+        return "junior"
+    elif years < 5:
+        return "mid"
+    else:
+        return "senior"
+
+
 
 # ======================================================
 # AUTH ROUTES
@@ -1858,6 +1907,336 @@ PERFORMANCE REVIEW:"""
             "success": False,
             "error": str(e)
         }), 500
+        
+# ======================================================
+# SMART MATCHING ROUTES (PROJECT-BASED MATCHING)
+# ======================================================
+
+@app.route("/smart-matching")
+def smart_matching():
+    """Smart matching page - project-based candidate matching"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    return render_template("smart_matching.html")
+
+
+@app.route("/api/smart-matching/projects")
+def get_projects_for_matching():
+    """Get all projects for matching"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        projects = Project.query.all()
+        
+        projects_list = []
+        for proj in projects:
+            projects_list.append({
+                "id": proj.id,
+                "project_code": proj.project_code,
+                "name": proj.name,
+                "description": proj.description or "",
+                "status": proj.status,
+                "created_at": proj.created_at.isoformat()
+            })
+        
+        return jsonify({
+            "success": True,
+            "projects": projects_list
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting projects: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/smart-matching/find-matches", methods=["POST"])
+def find_project_matches():
+    """Find best matching employees for a project using RAG"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        project_code = data.get("project_code")
+        
+        if not project_code:
+            return jsonify({"success": False, "error": "Project code required"}), 400
+        
+        print(f"\n🎯 Finding matches for project: {project_code}")
+        
+        # Get project details
+        project = Project.query.filter_by(project_code=project_code).first()
+        if not project:
+            return jsonify({"success": False, "error": "Project not found"}), 404
+        
+        # Get already assigned members to exclude them
+        assigned_members = ProjectMember.query.filter_by(project_id=project.id).all()
+        assigned_employee_ids = {m.employee_id for m in assigned_members}
+        
+        print(f"  📋 Project: {project.name}")
+        print(f"  📝 Description: {project.description or 'No description'}")
+        print(f"  👥 Already assigned: {len(assigned_employee_ids)} employees")
+        
+        # Build search query from project details
+        search_query = f"{project.name} {project.description or ''}"
+        
+        # Initialize retriever and LLM
+        retriever = get_retriever(k=20)
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.2)
+        
+        # Retrieve candidates using RAG
+        print(f"  🔍 Searching for candidates...")
+        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        vectordb = Chroma(
+            persist_directory=CHROMA_DIR,
+            embedding_function=embeddings
+        )
+        
+        # Search with project requirements
+        docs = vectordb.similarity_search(
+            search_query,
+            k=30
+        )
+        
+        print(f"  ✅ Retrieved {len(docs)} documents")
+        
+        # Extract employee IDs
+        employee_ids = set()
+        for doc in docs:
+            emp_id = doc.metadata.get('employee_id')
+            if emp_id and emp_id not in assigned_employee_ids:
+                employee_ids.add(emp_id)
+        
+        print(f"  👥 Found {len(employee_ids)} potential candidates")
+        
+        # Get detailed employee information and calculate match scores
+        matches = []
+        with app.app_context():
+            for emp_id in employee_ids:
+                emp = Employee.query.filter_by(employee_id=emp_id).first()
+                if emp:
+                    # Calculate match score using LLM
+                    match_score = calculate_project_match_score(
+                        emp, project, docs, llm
+                    )
+                    
+                    # Only include if match score is reasonable (>30%)
+                    if match_score >= 30:
+                        top_skills = extract_top_skills(emp, limit=5)
+                        project_count = ProjectMember.query.filter_by(
+                            employee_id=emp_id
+                        ).count()
+                        
+                        matches.append({
+                            "employee_id": emp.employee_id,
+                            "full_name": emp.full_name,
+                            "email": emp.email,
+                            "department": emp.department,
+                            "job_title": emp.job_title,
+                            "performance_score": float(emp.performance_score or 75.0),
+                            "total_exp": float(emp.total_exp or 0),
+                            "top_skills": top_skills,
+                            "active_projects": project_count,
+                            "available_for_projects": is_available_for_projects(emp_id),
+                            "match_score": match_score
+                        })
+        
+        # Sort by match score
+        matches.sort(key=lambda x: x['match_score'], reverse=True)
+        
+        # Limit to top 15 matches
+        matches = matches[:15]
+        
+        print(f"  ✅ Returning {len(matches)} best matches")
+        
+        return jsonify({
+            "success": True,
+            "matches": matches,
+            "project_code": project_code,
+            "project_name": project.name
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error finding matches: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/smart-matching/explain", methods=["POST"])
+def explain_match():
+    """Explain why an employee matches a project"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        project_code = data.get("project_code")
+        employee_id = data.get("employee_id")
+        
+        if not project_code or not employee_id:
+            return jsonify({"success": False, "error": "Missing parameters"}), 400
+        
+        print(f"\n💡 Generating explanation for {employee_id} → {project_code}")
+        
+        # Get project and employee
+        project = Project.query.filter_by(project_code=project_code).first()
+        employee = Employee.query.filter_by(employee_id=employee_id).first()
+        
+        if not project or not employee:
+            return jsonify({"success": False, "error": "Project or employee not found"}), 404
+        
+        # Get employee context from RAG
+        retriever = get_retriever(k=10)
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
+        
+        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        vectordb = Chroma(
+            persist_directory=CHROMA_DIR,
+            embedding_function=embeddings
+        )
+        
+        # Get relevant documents for this employee
+        docs = vectordb.similarity_search(
+            f"employee {employee_id} skills experience performance",
+            k=5,
+            filter={"employee_id": employee_id}
+        )
+        
+        # Build context
+        employee_context = "\n".join([doc.page_content[:500] for doc in docs])
+        
+        # Get performance metric
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        metric = PerformanceMetric.query.filter_by(
+            employee_id=employee_id,
+            month=current_month
+        ).first()
+        
+        # Build detailed prompt
+        prompt = f"""You are an HR expert. Explain why this employee is a good match for the project.
+
+PROJECT DETAILS:
+Name: {project.name}
+Code: {project.project_code}
+Description: {project.description or 'Not provided'}
+Status: {project.status}
+
+EMPLOYEE DETAILS:
+Name: {employee.full_name}
+ID: {employee.employee_id}
+Title: {employee.job_title or 'N/A'}
+Department: {employee.department or 'N/A'}
+Experience: {employee.total_exp or 0} years
+Performance Score: {employee.performance_score or 75}/100
+Skills: {', '.join(employee.skills.keys()) if employee.skills else 'Not listed'}
+
+ADDITIONAL CONTEXT:
+{employee_context}
+
+{"PERFORMANCE METRICS:" if metric else ""}
+{f"Attendance: {metric.attendance_score}/100, Task Completion: {metric.task_completion_score}/100, Quality: {metric.quality_score}/100" if metric else ""}
+
+Provide a detailed, professional explanation (4-5 sentences) covering:
+1. How their skills align with project needs
+2. Their relevant experience
+3. Their performance track record
+4. Any specific strengths that make them suitable
+
+Be specific and reference actual data. Make it compelling and informative."""
+        
+        print(f"  🧠 Generating explanation with LLM...")
+        response = llm.invoke(prompt)
+        explanation = response.content.strip()
+        
+        # Calculate match score
+        match_score = calculate_project_match_score(employee, project, docs, llm)
+        
+        print(f"  ✅ Explanation generated")
+        
+        return jsonify({
+            "success": True,
+            "explanation": explanation,
+            "employee_name": employee.full_name,
+            "employee_id": employee.employee_id,
+            "project_name": project.name,
+            "project_code": project.project_code,
+            "match_score": match_score
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error generating explanation: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+def calculate_project_match_score(employee, project, docs, llm):
+    """Calculate match score for employee-project pair"""
+    try:
+        # Get employee context from docs
+        emp_context = ""
+        for doc in docs:
+            if doc.metadata.get('employee_id') == employee.employee_id:
+                emp_context += doc.page_content[:400] + "\n"
+        
+        if not emp_context:
+            emp_context = f"Skills: {', '.join(employee.skills.keys()) if employee.skills else 'None'}"
+        
+        # Build prompt
+        prompt = f"""Rate the match between this employee and project on a scale of 0-100.
+
+PROJECT:
+Name: {project.name}
+Description: {project.description or 'No description'}
+
+EMPLOYEE:
+Name: {employee.full_name}
+Title: {employee.job_title or 'N/A'}
+Department: {employee.department or 'N/A'}
+Experience: {employee.total_exp or 0} years
+Performance: {employee.performance_score or 75}/100
+Skills: {', '.join(list(employee.skills.keys())[:8]) if employee.skills else 'Not listed'}
+
+DETAILED INFO:
+{emp_context[:800]}
+
+Consider:
+- Skill relevance to project
+- Experience level appropriateness
+- Performance track record
+- Department/role fit
+
+Respond with ONLY a number from 0-100, nothing else."""
+        
+        response = llm.invoke(prompt)
+        score_text = response.content.strip()
+        
+        # Extract number
+        import re
+        numbers = re.findall(r'\d+', score_text)
+        if numbers:
+            score = int(numbers[0])
+            return min(max(score, 0), 100)
+        
+        return 50
+        
+    except Exception as e:
+        print(f"  ⚠️  Error calculating match score: {e}")
+        return 50
 # ======================================================
 # HELPER FUNCTIONS FOR DATA PREPARATION
 # ======================================================
