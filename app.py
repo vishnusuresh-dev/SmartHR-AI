@@ -1576,9 +1576,9 @@ def ai_reset():
 
 # Add these routes to your app.py
 
-# ======================================================
-# AI-POWERED LEARNING PATH ROUTES
-# ======================================================
+# # ======================================================
+# # AI-POWERED LEARNING PATH ROUTES
+# # ======================================================
 
 @app.route("/learning-paths")
 def learning_paths():
@@ -1587,13 +1587,12 @@ def learning_paths():
         return redirect("/login")
     
     employees = Employee.query.all()
-    
+
     return render_template(
-        "learning_paths.html",
+       "learning_paths.html",
         employees=employees,
         total_employees=len(employees)
     )
-
 
 @app.route("/learning-paths/employee/<string:employee_id>")
 def employee_learning_path(employee_id):
@@ -2183,6 +2182,64 @@ def get_employee_projects(employee_id):
             })
     
     return projects
+
+
+# Add this route to your app.py (around line 1200, after other API routes)
+
+@app.route("/api/employees/all")
+def api_get_all_employees():
+    """API endpoint to get all employees with their data for learning paths"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        employees = Employee.query.all()
+        
+        employee_list = []
+        for emp in employees:
+            # Get project count
+            project_count = ProjectMember.query.filter_by(employee_id=emp.employee_id).count()
+            
+            # Get current month performance metric
+            current_month = datetime.utcnow().strftime("%Y-%m")
+            metric = PerformanceMetric.query.filter_by(
+                employee_id=emp.employee_id,
+                month=current_month
+            ).first()
+            
+            employee_list.append({
+                "employee_id": emp.employee_id,
+                "full_name": emp.full_name,
+                "email": emp.email,
+                "department": emp.department,
+                "job_title": emp.job_title,
+                "total_exp": emp.total_exp or 0,
+                "performance_score": emp.performance_score or 75.0,
+                "skills": emp.skills or {},
+                "project_count": project_count,
+                "status": emp.status,
+                "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
+                "has_performance_data": metric is not None
+            })
+        
+        return jsonify({
+            "success": True,
+            "employees": employee_list,
+            "total": len(employee_list)
+        }), 200
+        
+    except Exception as e:
+        print(f"Error fetching employees: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
+    
+    
+
 # ======================================================
 # HELPER FUNCTIONS FOR DATA PREPARATION
 # ======================================================
@@ -2241,4 +2298,4 @@ with app.app_context():
     db.create_all()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
