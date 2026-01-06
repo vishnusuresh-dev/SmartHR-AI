@@ -467,41 +467,70 @@ Format your response:
 
 def ask_rag_question(query: str):
     """
-    Enhanced RAG query processing with better prompting and formatting
+    Enhanced RAG query with metadata filtering
     """
     try:
         query_lower = query.lower()
         
-        # Get retriever
-        retriever = get_retriever(k=10)
+        print(f"\n🤖 Processing query: {query}")
         
-        # Initialize LLM with lower temperature for factual responses
+        # Initialize retriever
+        retriever = get_retriever(k=15)  # Get more docs for filtering
+        
+        # Initialize LLM
         llm = ChatOllama(model=LLM_MODEL, temperature=0.1)
         
-        # Retrieve from vector store
+        # Build metadata filter
+        where_filter = build_query_filter(query_lower)
+        
+        # Retrieve from vector store WITH metadata filtering
         vector_context = ""
         if retriever:
             try:
-                docs = retriever.invoke(query)
+                if where_filter:
+                    # Use filtered search
+                    print(f"  🔍 Using metadata filters: {where_filter}")
+                    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+                    vectordb = Chroma(
+                        persist_directory=CHROMA_DIR,
+                        embedding_function=embeddings
+                    )
+                    docs = vectordb.similarity_search(
+                        query,
+                        k=10,
+                        filter=where_filter  # 🔥 METADATA FILTERING
+                    )
+                    print(f"  ✅ Retrieved {len(docs)} filtered documents")
+                else:
+                    # Regular search
+                    docs = retriever.invoke(query)
+                    print(f"  ✅ Retrieved {len(docs)} documents")
+                
                 if docs:
                     # Take top 5 most relevant
                     vector_context = "\n---\n".join([d.page_content for d in docs[:5]])
+                    print(f"  📄 Using {len(docs[:5])} documents for context")
+                    
+                    # Debug: show what metadata we got
+                    sample_meta = docs[0].metadata if docs else {}
+                    print(f"  📊 Sample metadata keys: {list(sample_meta.keys())[:10]}")
+                    
             except Exception as e:
-                print(f"Vector retrieval error: {e}")
+                print(f"  ⚠️  Vector retrieval error: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Get targeted live context
+        # Get live context (less needed now with metadata filtering)
         live_context_parts = []
         
-        # Always add performance summary for context
-        live_context_parts.append(get_performance_summary_concise())
-        live_context_parts.append(get_department_summary())
-        
-        # Add specific context based on query
-        if any(word in query_lower for word in ['employee', 'who', 'list', 'show', 'find', 'attendance', 'performance']):
-            live_context_parts.append("\nEMPLOYEE DATA:\n" + get_employee_context_enhanced(query_lower, limit=15))
-        
-        if any(word in query_lower for word in ['project', 'team', 'working on', 'assigned']):
-            live_context_parts.append("\nPROJECT DATA:\n" + get_project_context())
+        # Only add live context if metadata filtering didn't work
+        if not where_filter or len(vector_context) < 500:
+            print(f"  📊 Adding live database context...")
+            live_context_parts.append(get_performance_summary_concise())
+            live_context_parts.append(get_department_summary())
+            
+            if any(word in query_lower for word in ['employee', 'who', 'list', 'show']):
+                live_context_parts.append("\nADDITIONAL EMPLOYEE DATA:\n" + get_employee_context_enhanced(query_lower, limit=10))
         
         live_context = "\n\n".join(live_context_parts)
         
@@ -516,14 +545,14 @@ CRITICAL RULES:
 2. Use actual names, numbers, and data from the context
 3. Format cleanly with bullet points or tables when listing multiple items
 4. If data is incomplete, state what's missing
-5. NO generic statements like "based on provided data" - just give the facts
+5. NO generic statements - just give the facts
 6. Maximum 200 words unless listing requires more
 
-CURRENT DATA:
-{live_context[:3000]}
+DOCUMENT DATA (FROM VECTOR STORE WITH METADATA FILTERING):
+{vector_context[:3500] if vector_context else "No relevant documents found"}
 
-HISTORICAL DATA FROM KNOWLEDGE BASE:
-{vector_context[:2000] if vector_context else "No relevant historical data"}
+LIVE DATABASE SUMMARY:
+{live_context[:1500] if live_context else ""}
 
 QUESTION: {query}
 
@@ -532,20 +561,21 @@ QUESTION: {query}
 ANSWER:"""
         
         # Get response
+        print(f"  🧠 Generating LLM response...")
         response = llm.invoke(prompt)
         answer = response.content.strip()
         
-        # Post-process to remove common verbose patterns
+        # Post-process
         answer = answer.replace("Based on the provided employee data, ", "")
         answer = answer.replace("Based on the provided data, ", "")
         answer = answer.replace("According to the information provided, ", "")
-        answer = answer.replace("Here are the ", "")
-        answer = answer.replace("Here is the ", "")
+        
+        print(f"  ✅ Response generated ({len(answer)} chars)")
         
         return answer
         
     except Exception as e:
-        print(f"Error in RAG query: {e}")
+        print(f"❌ Error in RAG query: {e}")
         import traceback
         traceback.print_exc()
         return f"I encountered an error processing your question: {str(e)}"
@@ -576,6 +606,70 @@ def get_project_context(limit=10):
     except Exception as e:
         print(f"Error getting project context: {e}")
         return ""
+    
+# ======================================================
+# METADATA FILTERING FOR ENHANCED RETRIEVAL
+# ======================================================
+
+def build_query_filter(query_lower):
+    """
+    Build ChromaDB metadata filter based on query keywords
+    Returns a dictionary for ChromaDB where clause
+    """
+    where_filter = {}
+    
+    # Department filtering
+    departments = ["engineering", "hr", "sales", "marketing", "finance", "operations"]
+    for dept in departments:
+        if dept in query_lower:
+            where_filter["department"] = dept.capitalize()
+            print(f"  🔍 Filtering by department: {dept.capitalize()}")
+            break
+    
+    # Performance filtering
+    if any(word in query_lower for word in ["top", "best", "high", "excellent"]):
+        where_filter["performance_range"] = "high"
+        print(f"  🔍 Filtering by performance: high")
+    elif any(word in query_lower for word in ["low", "poor", "underperform", "struggling"]):
+        where_filter["performance_range"] = "low"
+        print(f"  🔍 Filtering by performance: low")
+    elif "medium" in query_lower or "average" in query_lower:
+        where_filter["performance_range"] = "medium"
+        print(f"  🔍 Filtering by performance: medium")
+    
+    # Experience filtering
+    if "senior" in query_lower:
+        where_filter["experience_level"] = "senior"
+        print(f"  🔍 Filtering by experience: senior")
+    elif "junior" in query_lower:
+        where_filter["experience_level"] = "junior"
+        print(f"  🔍 Filtering by experience: junior")
+    elif "mid" in query_lower or "intermediate" in query_lower:
+        where_filter["experience_level"] = "mid"
+        print(f"  🔍 Filtering by experience: mid")
+    
+    # Availability filtering
+    if "available" in query_lower:
+        where_filter["available_for_projects"] = True
+        print(f"  🔍 Filtering by availability: True")
+    
+    # Status filtering
+    if "active" in query_lower and "employee" in query_lower:
+        where_filter["status"] = "Active"
+        print(f"  🔍 Filtering by status: Active")
+    
+    # Document type filtering
+    if "performance" in query_lower or "metric" in query_lower:
+        where_filter["document_type"] = "performance_metrics"
+        print(f"  🔍 Filtering by document type: performance_metrics")
+    elif "project" in query_lower and not "available" in query_lower:
+        where_filter["document_type"] = "project_assignment"
+        print(f"  🔍 Filtering by document type: project_assignment")
+    elif "resume" in query_lower or "cv" in query_lower:
+        where_filter["document_type"] = "resume"
+        print(f"  🔍 Filtering by document type: resume")
+    
+    return where_filter if where_filter else None
 # ======================================================
 # PERFORMANCE CALCULATION HELPERS (UPDATED)
 # ======================================================
@@ -835,7 +929,7 @@ def submit():
         db.session.add(e)
         db.session.commit()
         
-        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
+        flash(f" Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
         return redirect("/employees")
         
     except Exception as ex:
@@ -870,58 +964,48 @@ def employees():
 
 @app.route("/delete_employee/<int:emp_id>", methods=["POST"])
 def delete_employee(emp_id):
-    """Delete an employee and cleanup related data including uploaded files"""
     if "user" not in session:
         return redirect("/login")
-    
+
     try:
-        # Find the employee
+        # 🔹 Get employee
         employee = Employee.query.get_or_404(emp_id)
-        employee_id = employee.employee_id
-        employee_name = employee.full_name
-        
-        # Delete uploaded files from filesystem
-        files_deleted = []
-        
-        # Delete resume file if exists
+        emp_employee_id = employee.employee_id
+        emp_name = employee.full_name
+
+        # 🔹 1. Delete performance metrics FIRST (IMPORTANT)
+        PerformanceMetric.query.filter_by(
+            employee_id=emp_employee_id
+        ).delete()
+
+        # 🔹 2. Delete project memberships
+        ProjectMember.query.filter_by(
+            employee_id=emp_employee_id
+        ).delete()
+
+        # 🔹 3. Delete resume file
         if employee.resume_path:
-            resume_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.resume_path)
-            if os.path.exists(resume_full_path):
-                try:
-                    os.remove(resume_full_path)
-                    files_deleted.append(f"resume: {employee.resume_path}")
-                except OSError as e:
-                    print(f"Error deleting resume file: {e}")
-        
-        # Delete profile picture if exists
+            resume_path = os.path.join(app.config["UPLOAD_FOLDER"], employee.resume_path)
+            if os.path.exists(resume_path):
+                os.remove(resume_path)
+
+        # 🔹 4. Delete profile picture
         if employee.profile_pic:
-            pic_full_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.profile_pic)
-            if os.path.exists(pic_full_path):
-                try:
-                    os.remove(pic_full_path)
-                    files_deleted.append(f"profile pic: {employee.profile_pic}")
-                except OSError as e:
-                    print(f"Error deleting profile picture: {e}")
-        
-        # Delete all project memberships for this employee
-        ProjectMember.query.filter_by(employee_id=employee_id).delete()
-        
-        # Delete the employee from database
+            pic_path = os.path.join(app.config["UPLOAD_FOLDER"], employee.profile_pic)
+            if os.path.exists(pic_path):
+                os.remove(pic_path)
+
+        # 🔹 5. Finally delete employee
         db.session.delete(employee)
         db.session.commit()
-        
-        # Create success message
-        success_msg = f"Employee {employee_name} deleted successfully"
-        if files_deleted:
-            success_msg += f" (Removed: {', '.join(files_deleted)})"
-        
-        flash(success_msg, "success")
-        
+
+        flash(f" Employee {emp_name} deleted successfully", "success")
+
     except Exception as e:
         db.session.rollback()
-        flash(f"Error deleting employee: {str(e)}", "danger")
-        print(f"ERROR in delete_employee: {str(e)}")
-    
+        flash(f"❌ Error deleting employee: {str(e)}", "danger")
+        print("DELETE ERROR:", e)
+
     return redirect("/employees")
 
 # ======================================================
@@ -1237,14 +1321,7 @@ def delete_project(project_id):
 
 
 # ============================================
-# SIMPLE PERFORMANCE MANAGEMENT ROUTES
-# ============================================
-
-# Add these corrected routes to your app.py
-# Replace the existing performance routes section
-
-# ============================================
-# CORRECTED PERFORMANCE MANAGEMENT ROUTES
+# PERFORMANCE MANAGEMENT ROUTES
 # ============================================
 
 @app.route("/performance/list")
@@ -1386,10 +1463,6 @@ def api_get_performance(employee_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ============================================
-# CRITICAL MISSING ROUTE - ADD THIS
-# ============================================
-
 @app.route("/api/performance/update/<string:employee_id>", methods=["POST"])
 def api_update_performance(employee_id):
     """API endpoint to update employee performance metrics"""
@@ -1481,6 +1554,8 @@ def api_update_performance(employee_id):
             "success": False,
             "error": str(e)
         }), 500
+        
+
 # ======================================================
 # AI CHATBOT ROUTES
 # ======================================================
@@ -1573,618 +1648,226 @@ def ai_reset():
         "success": True,
         "message": "Chat session reset"
     }), 200
+    
+# ======================================================
+# AI PERFORMANCE REVIEW GENERATION
+# ======================================================
 
-# Add these routes to your app.py
 
-# # ======================================================
-# # AI-POWERED LEARNING PATH ROUTES
-# # ======================================================
+@app.route("/reviews")
+def reviews_page():
+    """Performance review generation page"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    return render_template("reviews_rag.html")
+
+
+@app.route("/api/reviews/search-employees", methods=["POST"])
+def search_employees_for_review():
+    """Search employees for review generation"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        query = data.get("query", "").strip().lower()
+        
+        employees = Employee.query.all()
+        
+        if query:
+            employees = [emp for emp in employees 
+                        if query in emp.full_name.lower() 
+                        or query in emp.employee_id.lower()
+                        or (emp.department and query in emp.department.lower())]
+        
+        results = []
+        for emp in employees:
+            results.append({
+                "employee_id": emp.employee_id,
+                "full_name": emp.full_name,
+                "department": emp.department or "N/A",
+                "job_title": emp.job_title or "N/A",
+                "performance_score": emp.performance_score or 75.0
+            })
+        
+        return jsonify({
+            "success": True,
+            "employees": results[:20]  # Limit to 20 results
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in search_employees_for_review: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/reviews/generate-rag", methods=["POST"])
+def generate_review_rag():
+    """Generate AI-powered performance review using RAG"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        employee_query = data.get("employee_query", "")  # e.g., "EMP001" or "John Doe"
+        review_type = data.get("review_type", "comprehensive")
+        
+        if not employee_query:
+            return jsonify({"success": False, "error": "Employee query required"}), 400
+        
+        print(f"\n🤖 Generating RAG-powered review for: {employee_query}")
+        
+        # Initialize retriever and LLM
+        retriever = get_retriever(k=15)  # Get more docs for comprehensive review
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.4)  # Higher temp for creative writing
+        
+        # Build metadata filter for employee
+        where_filter = None
+        if employee_query.startswith("EMP"):
+            where_filter = {"employee_id": employee_query}
+        
+        # Step 1: Retrieve relevant documents from vector DB
+        print(f"  🔍 Retrieving documents from vector DB...")
+        if where_filter:
+            embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+            vectordb = Chroma(
+                persist_directory=CHROMA_DIR,
+                embedding_function=embeddings
+            )
+            docs = vectordb.similarity_search(
+                f"performance review information for {employee_query}",
+                k=15,
+                filter=where_filter
+            )
+        else:
+            docs = retriever.invoke(f"employee information performance metrics for {employee_query}")
+        
+        print(f"  ✅ Retrieved {len(docs)} documents")
+        
+        if not docs:
+            return jsonify({
+                "success": False,
+                "error": f"No information found for employee: {employee_query}. Make sure to run add_rag.py first."
+            }), 404
+        
+        # Step 2: Extract context from retrieved documents
+        context_parts = []
+        employee_info = {}
+        
+        for doc in docs:
+            context_parts.append(doc.page_content)
+            
+            # Extract employee metadata from first document
+            if not employee_info and doc.metadata:
+                employee_info = {
+                    "employee_id": doc.metadata.get("employee_id", ""),
+                    "full_name": doc.metadata.get("full_name", doc.metadata.get("employee_name", "")),
+                    "department": doc.metadata.get("department", "N/A"),
+                    "job_title": doc.metadata.get("job_title", "N/A"),
+                    "overall_score": doc.metadata.get("overall_score", doc.metadata.get("performance_score", 0))
+                }
+        
+        combined_context = "\n---\n".join(context_parts[:10])  # Use top 10 most relevant
+        
+        print(f"  📄 Built context from {len(context_parts[:10])} documents")
+        
+        # Step 3: Generate review using LLM with RAG context
+        review_type_instructions = {
+            "comprehensive": "a comprehensive performance review covering all aspects",
+            "quarterly": "a quarterly performance review focusing on the last 3 months",
+            "annual": "an annual performance review summarizing the entire year"
+        }
+        
+        prompt = f"""You are a professional HR manager writing {review_type_instructions[review_type]}.
+
+RETRIEVED EMPLOYEE DATA FROM DATABASE:
+{combined_context}
+
+Based ONLY on the information provided above, write a detailed, professional performance review with these sections:
+
+1. EXECUTIVE SUMMARY
+   - Overall performance assessment (2-3 sentences)
+   - Key highlight or achievement
+
+2. STRENGTHS AND ACHIEVEMENTS
+   - List 4-5 specific strengths with concrete examples from the data
+   - Include metrics and numbers where available (attendance %, task completion rate, quality scores, etc.)
+   - Mention specific projects or contributions
+
+3. AREAS FOR IMPROVEMENT
+   - Identify 2-3 areas that need attention based on the metrics
+   - Be constructive and specific
+   - Reference actual performance data (e.g., "attendance score of X indicates...")
+
+4. PERFORMANCE METRICS ANALYSIS
+   - Analyze key metrics: attendance, task completion, quality, collaboration, productivity
+   - Compare to standards and explain what the numbers mean
+   - Highlight both strong and weak areas
+
+5. RECOMMENDATIONS FOR DEVELOPMENT
+   - Suggest 3-4 specific, actionable development areas
+   - Based on current skills and performance gaps
+   - Include training or skill development suggestions
+
+6. GOALS FOR NEXT PERIOD
+   - Set 3-4 SMART goals based on current performance
+   - Make them specific and measurable
+   - Align with areas for improvement
+
+IMPORTANT GUIDELINES:
+- Use actual data, names, numbers, and metrics from the provided information
+- Be professional, balanced, and constructive
+- If specific data is mentioned (like "attended 20/22 days"), use those exact numbers
+- Maintain a motivating and supportive tone
+- Keep the review between 600-800 words
+- Use proper formatting with clear sections
+
+PERFORMANCE REVIEW:"""
+        
+        print(f"  🧠 Generating review with LLM...")
+        response = llm.invoke(prompt)
+        review_text = response.content.strip()
+        
+        print(f"  ✅ Review generated ({len(review_text)} characters)")
+        
+        return jsonify({
+            "success": True,
+            "review": review_text,
+            "employee": employee_info,
+            "sources_used": len(docs),
+            "review_type": review_type,
+            "generated_at": datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error generating RAG review: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
+
 
 @app.route("/learning-paths")
 def learning_paths():
-    """Learning paths dashboard showing all employees"""
     if "user" not in session:
         return redirect("/login")
     
     employees = Employee.query.all()
-
+    
     return render_template(
-       "learning_paths.html",
+        "learning_paths.html",
         employees=employees,
         total_employees=len(employees)
     )
-
-@app.route("/learning-paths/employee/<string:employee_id>")
-def employee_learning_path(employee_id):
-    """Personalized AI-powered learning path for a specific employee"""
-    if "user" not in session:
-        return redirect("/login")
-    
-    employee = Employee.query.filter_by(employee_id=employee_id).first_or_404()
-    
-    # Get employee's projects
-    projects = get_employee_projects(employee_id)
-    
-    # Get performance metrics
-    metrics = calculate_performance_metrics(employee)
-    
-    return render_template(
-        "employee_learning_detail.html",
-        employee=employee,
-        projects=projects,
-        metrics=metrics
-    )
-
-
-@app.route("/api/learning/analyze-employee", methods=["POST"])
-def analyze_employee_learning():
-    """AI-powered complete employee skill gap analysis"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    data = request.get_json()
-    employee_id = data.get("employee_id")
-    
-    if not employee_id:
-        return jsonify({"success": False, "error": "Employee ID required"}), 400
-    
-    employee = Employee.query.filter_by(employee_id=employee_id).first()
-    if not employee:
-        return jsonify({"success": False, "error": "Employee not found"}), 404
-    
-    try:
-        # Get AI-powered skill gap analysis
-        analysis = ai_analyze_employee_skills(employee)
-        
-        return jsonify({
-            "success": True,
-            "analysis": analysis
-        }), 200
-        
-    except Exception as e:
-        print(f"Error in learning analysis: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route("/api/learning/get-courses", methods=["POST"])
-def get_ai_courses():
-    """Get AI-powered course recommendations with real links"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    data = request.get_json()
-    employee_id = data.get("employee_id")
-    focus_area = data.get("focus_area", "all")  # critical, recommended, future, or all
-    
-    if not employee_id:
-        return jsonify({"success": False, "error": "Employee ID required"}), 400
-    
-    employee = Employee.query.filter_by(employee_id=employee_id).first()
-    if not employee:
-        return jsonify({"success": False, "error": "Employee not found"}), 404
-    
-    try:
-        # Get AI-powered course recommendations
-        recommendations = ai_get_course_recommendations(employee, focus_area)
-        
-        return jsonify({
-            "success": True,
-            "recommendations": recommendations
-        }), 200
-        
-    except Exception as e:
-        print(f"Error getting courses: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route("/api/learning/ai-chat", methods=["POST"])
-def learning_ai_chat():
-    """AI chat for personalized learning guidance"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    data = request.get_json()
-    employee_id = data.get("employee_id")
-    question = data.get("question", "").strip()
-    
-    if not employee_id or not question:
-        return jsonify({"success": False, "error": "Employee ID and question required"}), 400
-    
-    employee = Employee.query.filter_by(employee_id=employee_id).first()
-    if not employee:
-        return jsonify({"success": False, "error": "Employee not found"}), 404
-    
-    try:
-        # Get AI response with full employee context
-        response = ai_learning_chat(employee, question)
-        
-        return jsonify({
-            "success": True,
-            "response": response
-        }), 200
-        
-    except Exception as e:
-        print(f"Error in AI chat: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route("/api/learning/organization-insights", methods=["GET"])
-def get_organization_insights():
-    """Get AI-powered organization-wide skill gap insights"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    try:
-        insights = ai_analyze_organization()
-        
-        return jsonify({
-            "success": True,
-            "insights": insights
-        }), 200
-        
-    except Exception as e:
-        print(f"Error getting insights: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-# ======================================================
-# AI-POWERED HELPER FUNCTIONS
-# ======================================================
-
-def ai_analyze_employee_skills(employee):
-    """Use AI to analyze employee's skill gaps and learning needs"""
-    
-    # Get employee context
-    projects = get_employee_projects(employee.employee_id)
-    metrics = calculate_performance_metrics(employee)
-    
-    # Get all projects in organization for context
-    all_projects = Project.query.all()
-    org_skills_needed = set()
-    for proj in all_projects:
-        # Extract skills from project descriptions
-        if proj.description:
-            org_skills_needed.add(proj.description)
-    
-    # Initialize LLM
-    llm = ChatOllama(model=LLM_MODEL, temperature=0.2)
-    
-    # Build comprehensive analysis prompt
-    prompt = f"""You are an expert HR Learning & Development AI analyzing employee skill gaps.
-
-EMPLOYEE DATA:
-Name: {employee.full_name}
-Role: {employee.job_title or 'Not specified'}
-Department: {employee.department or 'Not specified'}
-Experience: {employee.total_exp or 0} years
-Performance Score: {employee.performance_score}/100
-
-CURRENT SKILLS:
-{json.dumps(employee.skills, indent=2) if employee.skills else 'No skills recorded'}
-
-ACTIVE PROJECTS ({len(projects)}):
-{json.dumps([{'name': p['name'], 'role': p['role'], 'status': p['status']} for p in projects], indent=2) if projects else 'No active projects'}
-
-PERFORMANCE METRICS:
-- Attendance: {metrics['attendance']}%
-- Task Completion: {metrics['task_completion']}%
-- Quality: {metrics['quality']}%
-- Productivity: {metrics['productivity']}%
-- Punctuality: {metrics['punctuality']}%
-
-ORGANIZATION CONTEXT:
-- Total Active Projects: {len(all_projects)}
-- Industry: Software Development
-- Current Year: 2025
-
-ANALYSIS TASK:
-Based on:
-1. Employee's current skills vs. their role requirements
-2. Performance metrics indicating areas needing improvement
-3. Active projects requiring specific technical skills
-4. 2025 market trends for {employee.job_title or 'software professionals'}
-5. Career progression path from {employee.job_title or 'current role'}
-
-Provide a detailed JSON analysis with:
-{{
-  "skill_gaps": {{
-    "critical": [
-      {{
-        "skill": "skill name",
-        "reason": "why it's critical (relate to their projects/performance)",
-        "priority": "High/Medium/Low",
-        "impact": "specific impact on their work",
-        "current_level": "None/Beginner/Intermediate",
-        "target_level": "Intermediate/Advanced/Expert"
-      }}
-    ],
-    "recommended": [similar structure for nice-to-have skills],
-    "future": [similar structure for career growth skills]
-  }},
-  "performance_insights": {{
-    "strengths": ["what they're good at based on performance"],
-    "improvement_areas": ["what needs work based on metrics"],
-    "learning_style_recommendation": "self-paced/structured/hands-on/etc"
-  }},
-  "career_path": {{
-    "current_stage": "description",
-    "next_role": "potential next role",
-    "skills_for_progression": ["skills needed"]
-  }},
-  "urgency": "Low/Medium/High/Critical",
-  "recommended_learning_hours_per_week": 5
-}}
-
-IMPORTANT: 
-- Be specific about WHY each skill is needed
-- Connect skill gaps to actual performance metrics
-- Consider their current workload ({len(projects)} projects)
-- Prioritize skills that will immediately help their performance
-- Consider 2025 industry trends
-
-Respond with ONLY the JSON, no explanations:"""
-
-    try:
-        response = llm.invoke(prompt)
-        result = response.content.strip()
-        
-        # Clean up response (remove markdown if present)
-        result = result.replace('```json', '').replace('```', '').strip()
-        
-        # Parse JSON
-        analysis = json.loads(result)
-        
-        # Add employee info
-        analysis["employee"] = {
-            "id": employee.employee_id,
-            "name": employee.full_name,
-            "role": employee.job_title,
-            "department": employee.department,
-            "performance": employee.performance_score
-        }
-        
-        return analysis
-        
-    except json.JSONDecodeError as e:
-        print(f"JSON parsing error: {e}")
-        print(f"Raw AI response: {result[:500]}")
-        # Return a basic structure if AI response fails
-        return {
-            "error": "Failed to parse AI response",
-            "skill_gaps": {"critical": [], "recommended": [], "future": []},
-            "urgency": "Medium"
-        }
-    except Exception as e:
-        print(f"AI analysis error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
-
-
-def ai_get_course_recommendations(employee, focus_area="all"):
-    """Get AI-powered course recommendations with REAL course links"""
-    
-    # First, get skill gap analysis
-    analysis = ai_analyze_employee_skills(employee)
-    
-    # Initialize LLM
-    llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
-    
-    # Determine which skills to focus on
-    if focus_area == "critical":
-        skills_to_learn = analysis["skill_gaps"]["critical"][:3]
-        priority_level = "immediate need"
-    elif focus_area == "recommended":
-        skills_to_learn = analysis["skill_gaps"]["recommended"][:3]
-        priority_level = "recommended development"
-    elif focus_area == "future":
-        skills_to_learn = analysis["skill_gaps"]["future"][:3]
-        priority_level = "future growth"
-    else:
-        # All - take top items from each category
-        skills_to_learn = (
-            analysis["skill_gaps"]["critical"][:2] +
-            analysis["skill_gaps"]["recommended"][:2] +
-            analysis["skill_gaps"]["future"][:1]
-        )
-        priority_level = "comprehensive development"
-    
-    # Build course recommendation prompt
-    prompt = f"""You are an expert course curator. Find REAL, SPECIFIC courses from major platforms.
-
-EMPLOYEE PROFILE:
-Name: {employee.full_name}
-Role: {employee.job_title}
-Current Level: {employee.total_exp} years experience
-Performance: {employee.performance_score}/100
-
-SKILLS NEEDED ({priority_level}):
-{json.dumps(skills_to_learn, indent=2)}
-
-TASK: Provide 5-7 REAL courses from these platforms:
-- Udemy (udemy.com/course/[exact-course-name])
-- Coursera (coursera.org/learn/[course-name])
-- Pluralsight (pluralsight.com/courses/[course-name])
-- LinkedIn Learning (linkedin.com/learning/[course-name])
-- edX (edx.org/course/[course-name])
-- FreeCodeCamp (freecodecamp.org/learn)
-- YouTube (search for specific playlists)
-
-For each course, provide:
-{{
-  "courses": [
-    {{
-      "title": "REAL course name",
-      "platform": "Udemy/Coursera/etc",
-      "instructor": "instructor name if known",
-      "skill_focus": "which skill gap this addresses",
-      "level": "Beginner/Intermediate/Advanced",
-      "duration": "estimated hours",
-      "rating": "4.5/5 or similar if known",
-      "price": "Free/Paid/$amount",
-      "url": "https://www.[actual-platform].com/course/[real-course-slug]/",
-      "why_recommended": "specific reason based on their skill gap",
-      "expected_outcome": "what they'll achieve",
-      "prerequisites": ["if any"],
-      "key_topics": ["main topics covered"]
-    }}
-  ],
-  "learning_path": {{
-    "start_with": "course title to start",
-    "then": "next course",
-    "finally": "advanced course",
-    "total_duration": "X weeks",
-    "time_per_week": "Y hours"
-  }}
-}}
-
-CRITICAL REQUIREMENTS:
-1. Use REAL course names (search your knowledge for popular courses)
-2. Include COMPLETE URLs (full course slugs)
-3. Mix free and paid options
-4. Prioritize highly-rated courses (4.5+)
-5. Match to their current experience level
-6. Provide logical progression
-7. Be specific about why each course helps them
-
-Example REAL courses to give you an idea:
-- Udemy: "The Complete Web Developer Course 2.0" by Rob Percival
-- Coursera: "Machine Learning" by Andrew Ng
-- FreeCodeCamp: "Responsive Web Design Certification"
-
-Respond with ONLY JSON, no markdown:"""
-
-    try:
-        response = llm.invoke(prompt)
-        result = response.content.strip()
-        
-        # Clean response
-        result = result.replace('```json', '').replace('```', '').strip()
-        
-        # Parse JSON
-        recommendations = json.loads(result)
-        
-        # Add context
-        recommendations["employee_context"] = {
-            "name": employee.full_name,
-            "focus_area": focus_area,
-            "skill_gaps_addressed": [s.get("skill", "Unknown") for s in skills_to_learn]
-        }
-        
-        return recommendations
-        
-    except json.JSONDecodeError as e:
-        print(f"JSON parsing error: {e}")
-        print(f"Raw AI response: {result[:500]}")
-        return {
-            "error": "Failed to parse course recommendations",
-            "courses": []
-        }
-    except Exception as e:
-        print(f"AI course recommendation error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
-
-
-def ai_learning_chat(employee, question):
-    """AI-powered chat for learning guidance"""
-    
-    # Get employee context
-    projects = get_employee_projects(employee.employee_id)
-    metrics = calculate_performance_metrics(employee)
-    analysis = ai_analyze_employee_skills(employee)
-    
-    # Initialize LLM
-    llm = ChatOllama(model=LLM_MODEL, temperature=0.4)
-    
-    prompt = f"""You are a personal Learning & Development coach for {employee.full_name}.
-
-EMPLOYEE PROFILE:
-Role: {employee.job_title}
-Department: {employee.department}
-Experience: {employee.total_exp} years
-Performance Score: {employee.performance_score}/100
-
-CURRENT SKILLS:
-{json.dumps(employee.skills, indent=2) if employee.skills else 'No skills recorded'}
-
-SKILL GAP ANALYSIS:
-{json.dumps(analysis.get('skill_gaps', {}), indent=2)}
-
-PERFORMANCE METRICS:
-{json.dumps(metrics, indent=2)}
-
-ACTIVE PROJECTS:
-{json.dumps(projects, indent=2) if projects else 'No active projects'}
-
-USER QUESTION: {question}
-
-INSTRUCTIONS:
-- Provide personalized, actionable advice
-- Reference their specific skills, projects, and performance
-- Suggest concrete learning resources when relevant
-- Be encouraging and supportive
-- If they ask for courses, provide specific real courses with platforms
-- Keep response conversational but professional
-- Format with emojis and clear sections for readability
-
-Respond as their personal learning coach:"""
-
-    try:
-        response = llm.invoke(prompt)
-        return response.content.strip()
-        
-    except Exception as e:
-        print(f"AI chat error: {e}")
-        return f"I apologize, but I'm having trouble processing your question right now. Error: {str(e)}"
-
-
-def ai_analyze_organization():
-    """AI-powered organization-wide skill gap analysis"""
-    
-    employees = Employee.query.all()
-    projects = Project.query.all()
-    
-    # Gather organization data
-    org_data = {
-        "total_employees": len(employees),
-        "departments": {},
-        "roles": {},
-        "avg_performance": sum(e.performance_score or 0 for e in employees) / len(employees) if employees else 0,
-        "total_projects": len(projects),
-        "skills_distribution": {}
-    }
-    
-    # Aggregate data
-    for emp in employees:
-        # Count by department
-        dept = emp.department or "Unassigned"
-        org_data["departments"][dept] = org_data["departments"].get(dept, 0) + 1
-        
-        # Count by role
-        role = emp.job_title or "Unknown"
-        org_data["roles"][role] = org_data["roles"].get(role, 0) + 1
-        
-        # Skills distribution
-        if emp.skills:
-            for skill in emp.skills.keys():
-                org_data["skills_distribution"][skill] = org_data["skills_distribution"].get(skill, 0) + 1
-    
-    # Initialize LLM
-    llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
-    
-    prompt = f"""You are an organizational development expert analyzing company-wide skill gaps.
-
-ORGANIZATION DATA:
-{json.dumps(org_data, indent=2)}
-
-ANALYSIS TASK:
-Provide strategic insights for HR/L&D planning:
-
-{{
-  "overall_health": {{
-    "score": "1-100",
-    "assessment": "brief overall assessment"
-  }},
-  "critical_skill_gaps": [
-    {{
-      "skill": "skill name",
-      "gap_severity": "High/Medium/Low",
-      "employees_needed": "number",
-      "impact": "business impact",
-      "recommended_action": "specific action"
-    }}
-  ],
-  "department_insights": {{
-    "department_name": {{
-      "strength": "what they're good at",
-      "weakness": "what needs improvement",
-      "priority_training": ["skills to focus on"]
-    }}
-  }},
-  "hiring_recommendations": [
-    {{
-      "role": "role to hire",
-      "reason": "why",
-      "priority": "High/Medium/Low"
-    }}
-  ]],
-  "training_budget_allocation": {{
-    "department": "percentage"
-  }},
-  "trends": {{
-    "positive": ["good trends"],
-    "concerns": ["areas of concern"]
-  }}
-}}
-
-Consider:
-- Current skill distribution vs. project demands
-- Performance levels across organization
-- 2025 industry trends
-- Scalability and growth
-
-Respond with ONLY JSON:"""
-
-    try:
-        response = llm.invoke(prompt)
-        result = response.content.strip()
-        result = result.replace('```json', '').replace('```', '').strip()
-        
-        insights = json.loads(result)
-        insights["generated_at"] = datetime.utcnow().isoformat()
-        
-        return insights
-        
-    except Exception as e:
-        print(f"Organization analysis error: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e)}
-
-
-def get_employee_projects(employee_id):
-    """Get detailed project information for employee"""
-    memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
-    projects = []
-    
-    for m in memberships:
-        project = Project.query.get(m.project_id)
-        if project:
-            team_size = ProjectMember.query.filter_by(project_id=project.id).count()
-            projects.append({
-                "id": project.id,
-                "name": project.name,
-                "code": project.project_code,
-                "description": project.description,
-                "role": m.role,
-                "status": project.status,
-                "team_size": team_size
-            })
-    
-    return projects
-
-
-# Add this route to your app.py (around line 1200, after other API routes)
+    # Add this route to your app.py (around line 1200, after other API routes)
 
 @app.route("/api/employees/all")
 def api_get_all_employees():
@@ -2236,10 +1919,10 @@ def api_get_all_employees():
             "success": False,
             "error": str(e)
         }), 500
-    
-    
-    
 
+
+
+    
 # ======================================================
 # HELPER FUNCTIONS FOR DATA PREPARATION
 # ======================================================
@@ -2298,4 +1981,4 @@ with app.app_context():
     db.create_all()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=True, use_reloader=False, threaded=True)

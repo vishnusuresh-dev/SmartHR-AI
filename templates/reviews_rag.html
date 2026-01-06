@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Performance Reviews - Smart HR</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .reviews-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .reviews-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 20px;
+            margin-bottom: 40px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .reviews-header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .reviews-header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .rag-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.7em;
+            margin-left: 10px;
+            font-weight: 600;
+        }
+
+        .review-generator {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .input-section {
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .input-with-icon {
+            position: relative;
+        }
+
+        .input-with-icon i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #667eea;
+        }
+
+        .input-with-icon input {
+            width: 100%;
+            padding: 15px 15px 15px 45px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .input-with-icon input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .employee-suggestions {
+            margin-top: 10px;
+            display: none;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .employee-suggestions.active {
+            display: block;
+        }
+
+        .suggestion-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .suggestion-item:hover {
+            background: #f8f9ff;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 3px;
+        }
+
+        .suggestion-meta {
+            font-size: 0.85em;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+
+        .review-types {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .review-type-card {
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .review-type-card:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .review-type-card.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .review-type-card i {
+            font-size: 2em;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .review-type-card h4 {
+            margin: 0 0 5px 0;
+            font-size: 1.1em;
+        }
+
+        .review-type-card p {
+            margin: 0;
+            font-size: 0.85em;
+            opacity: 0.8;
+        }
+
+        .generate-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            transition: all 0.3s;
+        }
+
+        .generate-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading-state {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8ecff 100%);
+            border-radius: 12px;
+            margin-top: 30px;
+        }
+
+        .loading-state.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-steps {
+            margin-top: 20px;
+            text-align: left;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .loading-step {
+            padding: 10px 15px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+
+        .loading-step.active {
+            opacity: 1;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.2);
+        }
+
+        .loading-step i {
+            color: #667eea;
+        }
+
+        .review-output {
+            display: none;
+            margin-top: 40px;
+        }
+
+        .review-output.active {
+            display: block;
+        }
+
+        .review-header-info {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8ecff 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .review-header-info h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.5em;
+        }
+
+        .review-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .meta-item i {
+            color: #667eea;
+            width: 20px;
+        }
+
+        .meta-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 2px;
+        }
+
+        .meta-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .rag-info {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9em;
+        }
+
+        .rag-info i {
+            color: #667eea;
+            font-size: 1.2em;
+        }
+
+        .review-content {
+            background: white;
+            padding: 35px;
+            border-radius: 12px;
+            border: 2px solid #e0e0e0;
+            line-height: 1.9;
+            color: #444;
+            white-space: pre-wrap;
+            font-size: 1.05em;
+        }
+
+        .review-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            background: white;
+            color: #667eea;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s;
+        }
+
+        .action-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        .score-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .score-excellent { background: #d4edda; color: #155724; }
+        .score-good { background: #d1ecf1; color: #0c5460; }
+        .score-average { background: #fff3cd; color: #856404; }
+        .score-poor { background: #f8d7da; color: #721c24; }
+
+        .tip-box {
+            background: #fff9e6;
+            border-left: 4px solid #ffc107;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .tip-box i {
+            color: #ffc107;
+            font-size: 1.2em;
+        }
+
+        .tip-box p {
+            margin: 0;
+            color: #666;
+            font-size: 0.95em;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">🧠</div>
+                <div class="logo-text">
+                    <h1>Smart HR AI</h1>
+                </div>
+            </div>
+            <div class="header-actions">
+                <a href="{{ url_for('dashboard') }}">
+                    <button class="user-btn">Dashboard</button>
+                </a>
+                <a href="{{ url_for('employees') }}">
+                    <button class="user-btn">Employees</button>
+                </a>
+                <a href="{{ url_for('performance_dashboard') }}">
+                    <button class="user-btn">Performance</button>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div class="reviews-container">
+
+        <!-- Main Generator -->
+        <div class="review-generator">
+            <div class="input-section">
+                <!-- Employee Search -->
+                <div class="input-group">
+                    <label>
+                        <i class="fas fa-user"></i>
+                        Select Employee
+                    </label>
+                    <div class="input-with-icon">
+                        <i class="fas fa-search"></i>
+                        <input 
+                            type="text" 
+                            id="employeeSearch" 
+                            placeholder="Type employee name or ID (e.g., 'John Doe' or 'EMP001')..."
+                            autocomplete="off"
+                        >
+                    </div>
+                    <div class="employee-suggestions" id="employeeSuggestions"></div>
+                </div>
+
+                <!-- Review Type Selection -->
+                <div class="input-group">
+                    <label>
+                        <i class="fas fa-clipboard-list"></i>
+                        Review Type
+                    </label>
+                    <div class="review-types">
+                        <div class="review-type-card active" data-type="comprehensive" onclick="selectReviewType('comprehensive')">
+                            <i class="fas fa-list"></i>
+                            <h4>Comprehensive</h4>
+                            <p>Full detailed review</p>
+                        </div>
+                        <div class="review-type-card" data-type="quarterly" onclick="selectReviewType('quarterly')">
+                            <i class="fas fa-calendar-alt"></i>
+                            <h4>Quarterly</h4>
+                            <p>3-month summary</p>
+                        </div>
+                        <div class="review-type-card" data-type="annual" onclick="selectReviewType('annual')">
+                            <i class="fas fa-calendar-check"></i>
+                            <h4>Annual</h4>
+                            <p>Year-end review</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tip-box">
+                    <i class="fas fa-info-circle"></i>
+                    <p><strong>How it works:</strong> Our AI retrieves relevant data from your HR database (resumes, performance metrics, project assignments) and generates a personalized review using advanced language models.</p>
+                </div>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="generate-section">
+                <button class="generate-btn" id="generateBtn" onclick="generateReview()" disabled>
+                    <i class="fas fa-robot"></i>
+                    <span>Generate AI-Powered Review</span>
+                </button>
+            </div>
+
+            <!-- Loading State -->
+            <div class="loading-state" id="loadingState">
+                <div class="spinner"></div>
+                <h3>🤖 Generating Review, Please Wait!!...</h3>
+                <div class="loading-steps">
+                    <div class="loading-step" id="step1">
+                        <i class="fas fa-database"></i>
+                        <span>Retrieving employee data from vector database...</span>
+                    </div>
+                    <div class="loading-step" id="step2">
+                        <i class="fas fa-search"></i>
+                        <span>Finding relevant performance metrics and documents...</span>
+                    </div>
+                    <div class="loading-step" id="step3">
+                        <i class="fas fa-brain"></i>
+                        <span>Analyzing data with LLM (Llama 3.2)...</span>
+                    </div>
+                    <div class="loading-step" id="step4">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Generating comprehensive review...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Review Output -->
+            <div class="review-output" id="reviewOutput">
+                <div class="review-header-info">
+                    <h3>
+                        <i class="fas fa-file-contract"></i>
+                        Performance Review
+                    </h3>
+                    
+                    <div class="review-meta-grid">
+                        <div class="meta-item">
+                            <i class="fas fa-user"></i>
+                            <div>
+                                <div class="meta-label">Employee</div>
+                                <div class="meta-value" id="reviewEmployeeName"></div>
+                            </div>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-id-badge"></i>
+                            <div>
+                                <div class="meta-label">Employee ID</div>
+                                <div class="meta-value" id="reviewEmployeeId"></div>
+                            </div>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-building"></i>
+                            <div>
+                                <div class="meta-label">Department</div>
+                                <div class="meta-value" id="reviewDepartment"></div>
+                            </div>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-briefcase"></i>
+                            <div>
+                                <div class="meta-label">Job Title</div>
+                                <div class="meta-value" id="reviewJobTitle"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rag-info">
+                        <i class="fas fa-database"></i>
+                        <span>Generated using RAG with <strong id="sourcesCount">0</strong> source documents from vector database</span>
+                    </div>
+                </div>
+
+                <div class="review-content" id="reviewContent"></div>
+
+                <div class="review-actions">
+                    <button class="action-btn" onclick="copyReview()">
+                        <i class="fas fa-copy"></i>
+                        Copy to Clipboard
+                    </button>
+                    <button class="action-btn" onclick="downloadReview()">
+                        <i class="fas fa-download"></i>
+                        Download as Text
+                    </button>
+                    <button class="action-btn primary" onclick="generateReview()">
+                        <i class="fas fa-sync"></i>
+                        Regenerate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedEmployeeQuery = null;
+        let selectedEmployeeData = {};
+        let selectedReviewType = 'comprehensive';
+        let searchTimeout = null;
+
+        // Employee search with autocomplete
+        document.getElementById('employeeSearch').addEventListener('input', function(e) {
+            const query = e.target.value.trim();
+            
+            clearTimeout(searchTimeout);
+            
+            if (query.length < 2) {
+                document.getElementById('employeeSuggestions').classList.remove('active');
+                document.getElementById('generateBtn').disabled = true;
+                selectedEmployeeQuery = null;
+                return;
+            }
+
+            searchTimeout = setTimeout(() => searchEmployees(query), 300);
+        });
+
+        async function searchEmployees(query) {
+            try {
+                const response = await fetch('/api/reviews/search-employees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                const data = await response.json();
+                
+                if (data.success && data.employees.length > 0) {
+                    displaySuggestions(data.employees);
+                } else {
+                    document.getElementById('employeeSuggestions').innerHTML = 
+                        '<div class="suggestion-item">No employees found</div>';
+                    document.getElementById('employeeSuggestions').classList.add('active');
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+            }
+        }
+
+        function displaySuggestions(employees) {
+            const container = document.getElementById('employeeSuggestions');
+            container.innerHTML = employees.map(emp => `
+                <div class="suggestion-item" onclick='selectEmployee(${JSON.stringify(emp)})'>
+                    <div class="suggestion-name">${emp.full_name}</div>
+                    <div class="suggestion-meta">
+                        <span><i class="fas fa-id-badge"></i> ${emp.employee_id}</span>
+                        <span><i class="fas fa-building"></i> ${emp.department}</span>
+                        <span><i class="fas fa-chart-line"></i> ${emp.performance_score}/100</span>
+                    </div>
+                </div>
+            `).join('');
+            container.classList.add('active');
+        }
+
+        function selectEmployee(emp) {
+            selectedEmployeeQuery = emp.employee_id;
+            selectedEmployeeData = emp;
+            
+            document.getElementById('employeeSearch').value = `${emp.full_name} (${emp.employee_id})`;
+            document.getElementById('employeeSuggestions').classList.remove('active');
+            document.getElementById('generateBtn').disabled = false;
+        }
+
+        function selectReviewType(type) {
+            selectedReviewType = type;
+            document.querySelectorAll('.review-type-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+        }
+
+        async function generateReview() {
+            if (!selectedEmployeeQuery) {
+                alert('Please select an employee first');
+                return;
+            }
+
+            // Hide previous output
+            document.getElementById('reviewOutput').classList.remove('active');
+            
+            // Show loading with steps
+            const loadingState = document.getElementById('loadingState');
+            loadingState.classList.add('active');
+            document.getElementById('generateBtn').disabled = true;
+
+            // Animate loading steps
+            const steps = ['step1', 'step2', 'step3', 'step4'];
+            steps.forEach((step, index) => {
+                setTimeout(() => {
+                    document.getElementById(step).classList.add('active');
+                }, index * 800);
+            });
+
+            try {
+                const response = await fetch('/api/reviews/generate-rag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        employee_query: selectedEmployeeQuery,
+                        review_type: selectedReviewType
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Populate review data
+                    document.getElementById('reviewEmployeeName').textContent = 
+                        data.employee.full_name || 'N/A';
+                    document.getElementById('reviewEmployeeId').textContent = 
+                        data.employee.employee_id || 'N/A';
+                    document.getElementById('reviewDepartment').textContent = 
+                        data.employee.department || 'N/A';
+                    document.getElementById('reviewJobTitle').textContent = 
+                        data.employee.job_title || 'N/A';
+                    document.getElementById('sourcesCount').textContent = 
+                        data.sources_used || 0;
+                    
+                    document.getElementById('reviewContent').textContent = data.review;
+
+                    // Hide loading, show review
+                    setTimeout(() => {
+                        loadingState.classList.remove('active');
+                        document.getElementById('reviewOutput').classList.add('active');
+                        
+                        // Reset loading steps
+                        steps.forEach(step => {
+                            document.getElementById(step).classList.remove('active');
+                        });
+                    }, 500);
+                } else {
+                    alert('Error: ' + data.error);
+                    loadingState.classList.remove('active');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate review. Please try again.');
+                loadingState.classList.remove('active');
+            } finally {
+                document.getElementById('generateBtn').disabled = false;
+            }
+        }
+
+        function copyReview() {
+            const content = document.getElementById('reviewContent').textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                const btn = event.currentTarget;
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                }, 2000);
+            });
+        }
+
+        function downloadReview() {
+            const content = document.getElementById('reviewContent').textContent;
+            const employeeName = selectedEmployeeData.full_name || 'Employee';
+            const date = new Date().toISOString().split('T')[0];
+            
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Performance_Review_${employeeName.replace(/\s+/g, '_')}_${date}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Close suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.input-with-icon') && !e.target.closest('.employee-suggestions')) {
+                document.getElementById('employeeSuggestions').classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>
