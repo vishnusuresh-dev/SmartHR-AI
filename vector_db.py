@@ -413,7 +413,7 @@ DETAILED METRICS:
 # 4. NEW: LOAD PROJECT ASSIGNMENTS FROM DATABASE
 # -----------------------------------------------------------
 def load_project_assignments():
-    """Load project assignments with ENRICHED METADATA"""
+    """Load ALL projects with ENRICHED METADATA (even without members)"""
     documents = []
     
     with app.app_context():
@@ -426,12 +426,10 @@ def load_project_assignments():
                 # Get all members
                 members = ProjectMember.query.filter_by(project_id=project.id).all()
                 
-                if not members:
-                    print(f"  ⚠️  No members for project {project.project_code}, skipping...")
-                    continue
-                
-                # Build project document (keep existing text format)
-                project_text = f"""
+                # Build project document (EVEN IF NO MEMBERS)
+                if members:
+                    # Project with team members
+                    project_text = f"""
 PROJECT INFORMATION
 ===================
 Project Code: {project.project_code}
@@ -445,23 +443,23 @@ Team Size: {len(members)} members
 
 TEAM MEMBERS:
 """
-                
-                member_details = []
-                member_ids = []
-                departments = []
-                avg_performance = 0
-                
-                for member in members:
-                    emp = Employee.query.filter_by(employee_id=member.employee_id).first()
-                    if emp:
-                        performance = emp.performance_score or 75.0
-                        avg_performance += performance
-                        member_ids.append(emp.employee_id)
-                        
-                        if emp.department and emp.department not in departments:
-                            departments.append(emp.department)
-                        
-                        member_info = f"""
+                    
+                    member_details = []
+                    member_ids = []
+                    departments = []
+                    avg_performance = 0
+                    
+                    for member in members:
+                        emp = Employee.query.filter_by(employee_id=member.employee_id).first()
+                        if emp:
+                            performance = emp.performance_score or 75.0
+                            avg_performance += performance
+                            member_ids.append(emp.employee_id)
+                            
+                            if emp.department and emp.department not in departments:
+                                departments.append(emp.department)
+                            
+                            member_info = f"""
 - {emp.full_name} ({emp.employee_id})
   Role: {member.role}
   Department: {emp.department or 'N/A'}
@@ -470,49 +468,75 @@ TEAM MEMBERS:
   Skills: {', '.join(emp.skills.keys()) if emp.skills else 'Not listed'}
   Experience: {emp.total_exp or 0} years
 """
-                        project_text += member_info
-                        member_details.append(emp.full_name)
-                
-                avg_performance = avg_performance / len(members) if members else 0
-                
-                project_text += f"\n\nPROJECT SUMMARY:\n"
-                project_text += f"The {project.name} project (code: {project.project_code}) "
-                project_text += f"is currently {project.status.lower()} with a team of {len(members)} members. "
-                project_text += f"Team members include: {', '.join(member_details)}."
-                
-                # 🔥 ENRICHED METADATA
-                metadata = {
-                    # Project identity
-                    "project_code": str(project.project_code),
-                    "project_name": str(project.name),
-                    "document_type": "project_assignment",
-                    "source": "project_database",
+                            project_text += member_info
+                            member_details.append(emp.full_name)
                     
-                    # Project details
-                    "status": str(project.status),
-                    "team_size": int(len(members)),
-                    "created_at": project.created_at.isoformat(),
+                    avg_performance = avg_performance / len(members) if members else 0
                     
-                    # Team composition
-                    "member_ids": ",".join(member_ids),  # Comma-separated list
-                    "departments": ",".join(departments),  # Cross-departmental info
-                    "avg_team_performance": float(round(avg_performance, 1)),
-                    "team_performance_range": str(get_performance_range(avg_performance)),
+                    project_text += f"\n\nPROJECT SUMMARY:\n"
+                    project_text += f"The {project.name} project (code: {project.project_code}) "
+                    project_text += f"is currently {project.status.lower()} with a team of {len(members)} members. "
+                    project_text += f"Team members include: {', '.join(member_details)}."
                     
-                    # Project classification
-                    "is_active": bool(project.status == "Active"),
-                    "is_large_team": bool(len(members) > 5),
-                    "is_cross_departmental": bool(len(departments) > 1),
-                }
+                    # Metadata for project WITH members
+                    metadata = {
+                        "project_code": str(project.project_code),
+                        "project_name": str(project.name),
+                        "document_type": "project_assignment",
+                        "source": "project_database",
+                        "status": str(project.status),
+                        "team_size": int(len(members)),
+                        "created_at": project.created_at.isoformat(),
+                        "member_ids": ",".join(member_ids),
+                        "departments": ",".join(departments),
+                        "avg_team_performance": float(round(avg_performance, 1)),
+                        "team_performance_range": str(get_performance_range(avg_performance)),
+                        "is_active": bool(project.status == "Active"),
+                        "is_large_team": bool(len(members) > 5),
+                        "is_cross_departmental": bool(len(departments) > 1),
+                        "has_members": True
+                    }
+                    
+                else:
+                    # Project WITHOUT members (newly created or all members removed)
+                    project_text = f"""
+PROJECT INFORMATION
+===================
+Project Code: {project.project_code}
+Project Name: {project.name}
+Status: {project.status}
+Description: {project.description or 'No description provided'}
+Created: {project.created_at.strftime('%Y-%m-%d')}
+
+TEAM COMPOSITION:
+Team Size: 0 members (Open positions available)
+
+This project is currently looking for team members. It is available for employee assignments.
+"""
+                    
+                    # Metadata for project WITHOUT members
+                    metadata = {
+                        "project_code": str(project.project_code),
+                        "project_name": str(project.name),
+                        "document_type": "project_assignment",
+                        "source": "project_database",
+                        "status": str(project.status),
+                        "team_size": 0,
+                        "created_at": project.created_at.isoformat(),
+                        "is_active": bool(project.status == "Active"),
+                        "has_members": False,
+                        "needs_members": True,
+                        "available_for_assignment": True
+                    }
                 
                 # Create document
                 doc = Document(
                     page_content=project_text,
-                    metadata=metadata  # 🔥 WITH ENRICHED METADATA
+                    metadata=metadata
                 )
                 
                 documents.append(doc)
-                print(f"  ✓ Loaded project data for {project.name} with {len(metadata)} metadata fields")
+                print(f"  ✓ Loaded project data for {project.name} ({len(members)} members)")
                 
             except Exception as e:
                 print(f"  ✗ Error loading project {project.project_code}: {e}")

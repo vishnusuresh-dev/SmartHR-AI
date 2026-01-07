@@ -784,7 +784,284 @@ def get_experience_level(years):
     else:
         return "senior"
 
+# Add after line 400 (after helper functions, before routes)
 
+def sync_employee_to_vector_db(employee_id):
+    """Add/update a single employee's data in vector database"""
+    try:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain_chroma import Chroma
+        from langchain_core.documents import Document
+        
+        # Get employee data
+        emp = Employee.query.filter_by(employee_id=employee_id).first()
+        if not emp:
+            return False
+        
+        # Get performance metric
+        current_month = datetime.utcnow().strftime("%Y-%m")
+        metric = PerformanceMetric.query.filter_by(
+            employee_id=employee_id,
+            month=current_month
+        ).first()
+        
+        # Get project count
+        project_count = ProjectMember.query.filter_by(
+            employee_id=employee_id
+        ).count()
+        
+        documents = []
+        
+        # 1. Resume document (if exists)
+        if emp.resume_path:
+            resume_path = os.path.join(app.config['UPLOAD_FOLDER'], emp.resume_path)
+            if os.path.exists(resume_path):
+                top_skills = extract_top_skills(emp, limit=5)
+                
+                resume_text = f"""
+EMPLOYEE RESUME
+Employee: {emp.full_name}
+ID: {emp.employee_id}
+Department: {emp.department or 'Not specified'}
+Job Title: {emp.job_title or 'Not specified'}
+Experience: {emp.total_exp or 0} years
+Skills: {', '.join(top_skills)}
+Performance: {emp.performance_score}/100
+Email: {emp.email}
+"""
+                
+                resume_metadata = {
+                    "source": resume_path,
+                    "employee_id": employee_id,
+                    "document_type": "resume",
+                    "full_name": emp.full_name,
+                    "department": emp.department or "Unassigned",
+                    "job_title": emp.job_title or "Not specified",
+                    "performance_score": float(emp.performance_score or 75.0),
+                    "performance_range": get_performance_range(emp.performance_score),
+                    "total_exp": float(emp.total_exp or 0),
+                    "experience_level": get_experience_level(emp.total_exp),
+                    "skill_count": len(emp.skills) if emp.skills else 0,
+                    "top_skill_1": top_skills[0] if len(top_skills) > 0 else "",
+                    "top_skill_2": top_skills[1] if len(top_skills) > 1 else "",
+                    "top_skill_3": top_skills[2] if len(top_skills) > 2 else "",
+                    "active_projects": project_count,
+                    "available_for_projects": is_available_for_projects(employee_id),
+                    "status": emp.status or "Active"
+                }
+                
+                documents.append(Document(page_content=resume_text, metadata=resume_metadata))
+        
+        # 2. Performance document (if metrics exist)
+        if metric:
+            performance_text = f"""
+EMPLOYEE PERFORMANCE REPORT
+Employee: {emp.full_name} ({employee_id})
+Department: {emp.department or 'Not specified'}
+Overall Score: {metric.calculate_overall_score()}/100
+Attendance: {metric.attendance_score}/100 ({metric.days_present}/{metric.days_total} days)
+Task Completion: {metric.task_completion_score}/100 ({metric.tasks_completed}/{metric.tasks_assigned} tasks)
+Quality: {metric.quality_score}/100
+Punctuality: {metric.punctuality_score}/100
+Collaboration: {metric.collaboration_score}/100
+Productivity: {metric.productivity_score}/100
+"""
+            
+            performance_metadata = {
+                "employee_id": employee_id,
+                "employee_name": emp.full_name,
+                "document_type": "performance_metrics",
+                "department": emp.department or "Unknown",
+                "overall_score": float(metric.calculate_overall_score()),
+                "performance_range": get_performance_range(metric.calculate_overall_score()),
+                "attendance_score": float(metric.attendance_score),
+                "task_completion_score": float(metric.task_completion_score),
+                "quality_score": float(metric.quality_score),
+                "month": metric.month,
+                "source": "performance_database"
+            }
+            
+            documents.append(Document(page_content=performance_text, metadata=performance_metadata))
+        
+        # Add to vector database
+        if documents:
+            embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+            vectordb = Chroma(
+                persist_directory=CHROMA_DIR,
+                embedding_function=embeddings
+            )
+            
+            # Delete old documents for this employee
+            try:
+                vectordb.delete(where={"employee_id": employee_id})
+            except:
+                pass  # Ignore if doesn't exist
+            
+            # Add new documents
+            vectordb.add_documents(documents)
+            
+            print(f"✅ Synced {len(documents)} documents for {employee_id} to vector DB")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error syncing {employee_id} to vector DB: {e}")
+        return False
+
+def delete_employee_from_vector_db(employee_id):
+    """Remove all employee documents from vector database"""
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        vectordb = Chroma(
+            persist_directory=CHROMA_DIR,
+            embedding_function=embeddings
+        )
+        
+        # Delete all documents with this employee_id
+        vectordb.delete(where={"employee_id": employee_id})
+        
+        print(f"✅ Deleted {employee_id} from vector DB")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error deleting {employee_id} from vector DB: {e}")
+        return False
+
+
+def delete_project_from_vector_db(project_code):
+    """Remove project assignment documents from vector database"""
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        vectordb = Chroma(
+            persist_directory=CHROMA_DIR,
+            embedding_function=embeddings
+        )
+        
+        # Delete project documents
+        vectordb.delete(where={"project_code": project_code})
+        
+        print(f"✅ Deleted project {project_code} from vector DB")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error deleting project {project_code} from vector DB: {e}")
+        return False
+
+
+def sync_project_to_vector_db(project_id):
+    """Add/update project in vector database (EVEN WITHOUT MEMBERS)"""
+    try:
+        from langchain_core.documents import Document
+        
+        project = Project.query.get(project_id)
+        if not project:
+            return False
+        
+        # Get all members
+        members = ProjectMember.query.filter_by(project_id=project.id).all()
+        
+        if members:
+            # Project WITH members
+            project_text = f"""
+PROJECT INFORMATION
+Project: {project.name} ({project.project_code})
+Status: {project.status}
+Description: {project.description or 'No description'}
+Team Size: {len(members)} members
+
+TEAM MEMBERS:
+"""
+            
+            member_details = []
+            member_ids = []
+            departments = []
+            avg_performance = 0
+            
+            for member in members:
+                emp = Employee.query.filter_by(employee_id=member.employee_id).first()
+                if emp:
+                    performance = emp.performance_score or 75.0
+                    avg_performance += performance
+                    member_ids.append(emp.employee_id)
+                    
+                    if emp.department and emp.department not in departments:
+                        departments.append(emp.department)
+                    
+                    member_info = f"- {emp.full_name} ({emp.employee_id}): {member.role}, {emp.department or 'N/A'}, Performance: {performance}/100\n"
+                    project_text += member_info
+                    member_details.append(emp.full_name)
+            
+            avg_performance = avg_performance / len(members) if members else 0
+            
+            # Metadata
+            metadata = {
+                "project_code": project.project_code,
+                "project_name": project.name,
+                "document_type": "project_assignment",
+                "source": "project_database",
+                "status": project.status,
+                "team_size": len(members),
+                "member_ids": ",".join(member_ids),
+                "departments": ",".join(departments),
+                "avg_team_performance": float(round(avg_performance, 1)),
+                "is_active": bool(project.status == "Active"),
+                "has_members": True,
+                "needs_members": False
+            }
+            
+        else:
+            # Project WITHOUT members
+            project_text = f"""
+PROJECT INFORMATION
+Project: {project.name} ({project.project_code})
+Status: {project.status}
+Description: {project.description or 'No description'}
+Team Size: 0 members
+
+This project currently has no assigned members. It is available for employee assignments and is looking for team members.
+"""
+            
+            # Metadata
+            metadata = {
+                "project_code": project.project_code,
+                "project_name": project.name,
+                "document_type": "project_assignment",
+                "source": "project_database",
+                "status": project.status,
+                "team_size": 0,
+                "is_active": bool(project.status == "Active"),
+                "has_members": False,
+                "needs_members": True,
+                "available_for_assignment": True
+            }
+        
+        doc = Document(page_content=project_text, metadata=metadata)
+        
+        # Add to vector database
+        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        vectordb = Chroma(
+            persist_directory=CHROMA_DIR,
+            embedding_function=embeddings
+        )
+        
+        # Delete old project documents
+        try:
+            vectordb.delete(where={"project_code": project.project_code})
+        except:
+            pass
+        
+        # Add new document
+        vectordb.add_documents([doc])
+        
+        print(f"✅ Synced project {project.project_code} to vector DB ({len(members)} members)")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error syncing project to vector DB: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 # ======================================================
 # AUTH ROUTES
@@ -949,6 +1226,8 @@ def submit():
         db.session.add(e)
         db.session.commit()
         
+        sync_employee_to_vector_db(e.employee_id)
+        
         flash(f" Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
         return redirect("/employees")
         
@@ -993,11 +1272,21 @@ def delete_employee(emp_id):
         emp_employee_id = employee.employee_id
         emp_name = employee.full_name
 
+        delete_employee_from_vector_db(emp_employee_id)
         # 🔹 1. Delete performance metrics FIRST (IMPORTANT)
         PerformanceMetric.query.filter_by(
             employee_id=emp_employee_id
         ).delete()
 
+        project_memberships = ProjectMember.query.filter_by(
+            employee_id=emp_employee_id
+        ).all()
+        
+        affected_project_ids = [pm.project_id for pm in project_memberships]
+        
+        
+        
+        
         # 🔹 2. Delete project memberships
         ProjectMember.query.filter_by(
             employee_id=emp_employee_id
@@ -1019,6 +1308,9 @@ def delete_employee(emp_id):
         db.session.delete(employee)
         db.session.commit()
 
+        for project_id in affected_project_ids:
+            sync_project_to_vector_db(project_id)
+            
         flash(f" Employee {emp_name} deleted successfully", "success")
 
     except Exception as e:
@@ -1078,38 +1370,37 @@ def edit_employee(emp_id):
 
 @app.route("/employee/<string:employee_id>/unassign/<int:project_id>", methods=["POST"])
 def unassign_employee_from_project(employee_id, project_id):
-    """Unassign an employee from a specific project from employee detail page"""
     if "user" not in session:
         return redirect("/login")
     
     try:
-        # Find the project membership
         member = ProjectMember.query.filter_by(
             project_id=project_id,
             employee_id=employee_id
         ).first()
         
         if member:
-            # Get project and employee names for flash message
             project = Project.query.get(project_id)
             employee = Employee.query.filter_by(employee_id=employee_id).first()
             
             project_name = project.name if project else "Unknown Project"
             employee_name = employee.full_name if employee else employee_id
             
-            # Delete the membership
             db.session.delete(member)
             db.session.commit()
             
-            flash(f"Successfully unassigned {employee_name} from {project_name}", "success")
+            # 🔥 RE-SYNC BOTH
+            sync_project_to_vector_db(project_id)
+            sync_employee_to_vector_db(employee_id)
+            
+            flash(f"✅ Successfully unassigned {employee_name} from {project_name}", "success")
         else:
             flash("Project assignment not found", "warning")
     
     except Exception as e:
         db.session.rollback()
-        flash(f"Error unassigning from project: {str(e)}", "danger")
+        flash(f"❌ Error unassigning from project: {str(e)}", "danger")
     
-    # Redirect back to employee detail page
     return redirect(url_for('view_employee', employee_id=employee_id))
 # ======================================================
 # VIEW SINGLE EMPLOYEE DETAILS (Optional enhancement)
@@ -1245,29 +1536,23 @@ def projects():
 
 @app.route("/projects/create", methods=["POST"])
 def create_project():
-    # Get form data
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip()
     
-    # Validate project name
     if not name:
         flash("Project name is required", "danger")
         return redirect("/projects")
     
-    # Check if project with same name already exists
     existing_project = Project.query.filter_by(name=name).first()
     if existing_project:
         flash(f"Project with name '{name}' already exists", "warning")
         return redirect("/projects")
     
-    # Generate unique project code
     project_code = "PROJ" + uuid.uuid4().hex[:5].upper()
     
-    # Ensure project code is unique
     while Project.query.filter_by(project_code=project_code).first():
         project_code = "PROJ" + uuid.uuid4().hex[:5].upper()
     
-    # Create new project
     try:
         new_project = Project(
             project_code=project_code,
@@ -1279,10 +1564,13 @@ def create_project():
         db.session.add(new_project)
         db.session.commit()
         
-        flash(f"Project '{name}' created successfully with code {project_code}", "success")
+        # 🔥 ADD THIS: Sync new project to vector DB (even with 0 members)
+        sync_project_to_vector_db(new_project.id)
+        
+        flash(f"✅ Project '{name}' created successfully with code {project_code}", "success")
     except Exception as e:
         db.session.rollback()
-        flash(f"Error creating project: {str(e)}", "danger")
+        flash(f"❌ Error creating project: {str(e)}", "danger")
     
     return redirect("/projects")
 
@@ -1292,7 +1580,6 @@ def assign_members(project_id):
     employee_ids = request.form.getlist("employee_ids")
 
     for emp_id in employee_ids:
-        # Check if this employee is already assigned to this project
         existing = ProjectMember.query.filter_by(
             project_id=project_id,
             employee_id=emp_id
@@ -1308,7 +1595,15 @@ def assign_members(project_id):
             flash(f"Employee {emp_id} is already assigned to this project", "warning")
 
     db.session.commit()
-    flash("Members assigned successfully", "success")
+    
+    # 🔥 RE-SYNC PROJECT (updated team composition)
+    sync_project_to_vector_db(project_id)
+    
+    # 🔥 RE-SYNC ALL ASSIGNED EMPLOYEES (updated project count)
+    for emp_id in employee_ids:
+        sync_employee_to_vector_db(emp_id)
+    
+    flash("✅ Members assigned successfully", "success")
     return redirect("/projects")
 
 
@@ -1322,20 +1617,50 @@ def remove_member(project_id, employee_id):
     if member:
         db.session.delete(member)
         db.session.commit()
-        flash(f"Member {employee_id} removed from project", "success")
+        
+        # 🔥 RE-SYNC PROJECT (updated team composition)
+        sync_project_to_vector_db(project_id)
+        
+        # 🔥 RE-SYNC EMPLOYEE (updated project count)
+        sync_employee_to_vector_db(employee_id)
+        
+        flash(f"✅ Member {employee_id} removed from project", "success")
     else:
         flash("Member not found", "warning")
     
     return redirect("/projects")
 
-
 @app.route("/projects/<int:project_id>/delete", methods=["POST"])
 def delete_project(project_id):
-    project = Project.query.get_or_404(project_id)
-    ProjectMember.query.filter_by(project_id=project_id).delete()
-    db.session.delete(project)
-    db.session.commit()
-    flash("Project deleted successfully", "success")
+    try:
+        project = Project.query.get_or_404(project_id)
+        project_code = project.project_code
+        
+        # 🔥 1. DELETE FROM VECTOR DB FIRST
+        delete_project_from_vector_db(project_code)
+        
+        # 2. Get all employees in this project (to re-sync them)
+        members = ProjectMember.query.filter_by(project_id=project_id).all()
+        affected_employee_ids = [m.employee_id for m in members]
+        
+        # 3. Delete project memberships
+        ProjectMember.query.filter_by(project_id=project_id).delete()
+        
+        # 4. Delete project from SQL
+        db.session.delete(project)
+        db.session.commit()
+        
+        # 🔥 5. RE-SYNC AFFECTED EMPLOYEES (update their project lists)
+        for employee_id in affected_employee_ids:
+            sync_employee_to_vector_db(employee_id)
+        
+        flash("✅ Project deleted successfully", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ Error deleting project: {str(e)}", "danger")
+        print("DELETE PROJECT ERROR:", e)
+    
     return redirect("/projects")
 
 
@@ -1551,6 +1876,8 @@ def api_update_performance(employee_id):
         # Commit changes
         db.session.commit()
         
+        sync_employee_to_vector_db(employee_id)
+        
         return jsonify({
             "success": True,
             "message": "Performance metrics updated successfully",
@@ -1671,13 +1998,6 @@ def ai_reset():
     
 # ======================================================
 # AI PERFORMANCE REVIEW GENERATION
-# ======================================================
-# ======================================================
-# AI PERFORMANCE REVIEW GENERATION (RAG-POWERED)
-# ======================================================
-
-# ======================================================
-# AI PERFORMANCE REVIEW GENERATION (RAG-POWERED)
 # ======================================================
 
 @app.route("/reviews")
@@ -2141,7 +2461,7 @@ def calculate_match_score_deterministic(emp, project, metric, semantic_score, pr
 
 @app.route("/api/smart-matching/explain", methods=["POST"])
 def explain_match_deterministic():
-    """Generate explanation based on REAL data - NO AI hallucination"""
+    """Generate detailed narrative explanation based on REAL data"""
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
@@ -2167,9 +2487,7 @@ def explain_match_deterministic():
             employee_id=employee_id
         ).count()
         
-        # ==============================================================
-        # GET SEMANTIC MATCH SCORE
-        # ==============================================================
+        # Get semantic match score
         search_query = f"Project: {project.name} Description: {project.description or ''}"
         
         embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
@@ -2187,7 +2505,6 @@ def explain_match_deterministic():
         
         semantic_score = 0
         if search_results:
-            # Get best matching document
             _, distance = search_results[0]
             semantic_score = max(0, 100 * (1 - distance / 2))
         
@@ -2200,124 +2517,85 @@ def explain_match_deterministic():
             project_count=project_count
         )
         
-        # ==============================================================
-        # BUILD EXPLANATION FROM REAL DATA
-        # ==============================================================
-        explanation_parts = []
+        # Build narrative explanation
+        top_skills = extract_top_skills(employee, limit=5)
         
-        # 1. Semantic Match
-        if semantic_score >= 70:
-            explanation_parts.append(
-                f"✅ **Strong Skill Match ({semantic_score:.1f}/100)**: "
-                f"{employee.full_name}'s profile shows excellent alignment with {project.name}'s requirements."
-            )
-        elif semantic_score >= 50:
-            explanation_parts.append(
-                f"✓ **Good Skill Match ({semantic_score:.1f}/100)**: "
-                f"{employee.full_name} has relevant experience for {project.name}."
-            )
-        else:
-            explanation_parts.append(
-                f"~ **Moderate Match ({semantic_score:.1f}/100)**: "
-                f"Some relevant skills for {project.name}."
-            )
+        explanation = f"""**{employee.full_name}** is {'an excellent' if final_score >= 80 else 'a strong' if final_score >= 60 else 'a suitable'} match for **{project.name}** based on their comprehensive skill set and professional background.
+
+**Technical Expertise:**
+{employee.full_name} brings {', '.join(top_skills[:3]) if len(top_skills) >= 3 else 'relevant technical skills'} to the table"""
         
-        # 2. Skills
-        if employee.skills:
-            top_skills = extract_top_skills(employee, limit=3)
-            explanation_parts.append(
-                f"\n**Key Skills**: {', '.join(top_skills)}"
-            )
-        
-        # 3. Performance
-        if employee.performance_score >= 85:
-            explanation_parts.append(
-                f"\n✅ **Excellent Performance ({employee.performance_score}/100)**: "
-                f"Consistently high-quality work."
-            )
-        elif employee.performance_score >= 70:
-            explanation_parts.append(
-                f"\n✓ **Solid Performance ({employee.performance_score}/100)**: "
-                f"Reliable track record."
-            )
-        
-        # 4. Experience
         if employee.total_exp and employee.total_exp >= 5:
-            explanation_parts.append(
-                f"\n✅ **Senior Experience**: {employee.total_exp} years - brings deep expertise."
-            )
+            explanation += f", backed by {employee.total_exp} years of industry experience. This senior-level expertise means they can handle complex technical challenges and mentor junior team members."
         elif employee.total_exp and employee.total_exp >= 2:
-            explanation_parts.append(
-                f"\n✓ **Mid-Level Experience**: {employee.total_exp} years - solid foundation."
-            )
-        
-        # 5. Detailed Metrics
-        if metric:
-            metric_highlights = []
-            
-            if metric.task_completion_score >= 85:
-                metric_highlights.append(
-                    f"• Task Completion: {metric.task_completion_score}% "
-                    f"({metric.tasks_completed}/{metric.tasks_assigned} tasks)"
-                )
-            
-            if metric.quality_score >= 85:
-                metric_highlights.append(
-                    f"• Quality Score: {metric.quality_score}/100 (low error rate)"
-                )
-            
-            if metric.collaboration_score >= 85:
-                metric_highlights.append(
-                    f"• Team Collaboration: {metric.collaboration_score}/100"
-                )
-            
-            if metric.attendance_score >= 90:
-                metric_highlights.append(
-                    f"• Attendance: {metric.days_present}/{metric.days_total} days ({metric.attendance_score}%)"
-                )
-            
-            if metric_highlights:
-                explanation_parts.append("\n**Performance Highlights**:\n" + "\n".join(metric_highlights))
-        
-        # 6. Availability
-        if is_available_for_projects(employee_id):
-            explanation_parts.append(
-                f"\n✅ **Available**: Currently on {project_count} project(s) - can take on new work."
-            )
+            explanation += f" with {employee.total_exp} years of hands-on experience. Their mid-level expertise provides a solid foundation for contributing effectively to the project."
         else:
-            explanation_parts.append(
-                f"\n⚠️ **Busy**: Currently on {project_count} projects - limited availability."
-            )
+            explanation += f". While relatively early in their career, they demonstrate strong potential and eagerness to learn."
         
-        # 7. Final recommendation
+        # Skill alignment
+        if semantic_score >= 70:
+            explanation += f"\n\nTheir skill profile shows exceptional alignment with the project requirements. "
+            if 'python' in [s.lower() for s in top_skills]:
+                explanation += "Python expertise is particularly valuable for this project's technical stack. "
+            if len(top_skills) >= 4:
+                explanation += f"Additionally, their proficiency in {', '.join(top_skills[3:5]) if len(top_skills) > 3 else 'complementary technologies'} adds versatility to their contribution."
+        elif semantic_score >= 50:
+            explanation += f"\n\nTheir technical background aligns well with the project's needs. "
+            if top_skills:
+                explanation += f"Skills like {top_skills[0]} are directly relevant, "
+                if len(top_skills) > 1:
+                    explanation += f"and experience with {', '.join(top_skills[1:3])} provides additional value."
+        
+        # Performance narrative
+        if employee.performance_score >= 85:
+            explanation += f"\n\n**Outstanding Track Record:**\n{employee.full_name} consistently delivers exceptional results, with a performance score of {employee.performance_score}/100. "
+            
+            if metric:
+                if metric.task_completion_score >= 85:
+                    explanation += f"They've successfully completed {metric.tasks_completed} out of {metric.tasks_assigned} tasks, demonstrating reliability and strong execution capabilities. "
+                
+                if metric.quality_score >= 85:
+                    explanation += f"Their work quality is exemplary, with minimal rework required and high peer review ratings. "
+                
+                if metric.collaboration_score >= 85:
+                    explanation += f"Team members consistently praise their collaborative approach and communication skills, making them an asset to any project team."
+        
+        elif employee.performance_score >= 70:
+            explanation += f"\n\n**Solid Performance:**\n{employee.full_name} maintains good performance standards with a score of {employee.performance_score}/100. "
+            
+            if metric:
+                if metric.task_completion_score >= 75:
+                    explanation += f"They've completed {metric.tasks_completed} tasks with {metric.on_time_completion}% on-time delivery, showing dependability. "
+                
+                if metric.attendance_score >= 85:
+                    explanation += f"Their attendance record is strong ({metric.days_present}/{metric.days_total} days), indicating commitment and reliability."
+        
+        # Work capacity
+        if project_count == 0:
+            explanation += f"\n\n**Availability:**\nCurrently not assigned to any projects, {employee.full_name} can dedicate full attention to {project.name}, ensuring focused contribution and rapid ramp-up."
+        elif project_count <= 2:
+            explanation += f"\n\n**Availability:**\nWith {project_count} active project{'s' if project_count > 1 else ''}, {employee.full_name} has proven they can manage multiple responsibilities effectively while maintaining quality output. They have capacity to take on this project."
+        else:
+            explanation += f"\n\n**Current Workload:**\n{employee.full_name} is currently engaged in {project_count} projects, demonstrating their value and reliability. However, availability for this project may be limited and should be discussed to ensure they can deliver their best work."
+        
+        # Department fit
+        if employee.department and project.name:
+            explanation += f"\n\n**Team Fit:**\nAs a {employee.job_title or 'team member'} in the {employee.department} department, {employee.full_name} understands the organizational context and can collaborate seamlessly with cross-functional teams."
+        
+        # Final recommendation
         if final_score >= 80:
-            explanation_parts.append(
-                f"\n\n🏆 **Recommendation**: Excellent match for {project.name}. Highly recommended."
-            )
+            explanation += f"\n\n**Recommendation:**\n{employee.full_name} is highly recommended for {project.name}. Their combination of technical expertise, proven performance, and professional experience makes them an ideal candidate who can deliver immediate value and drive project success."
         elif final_score >= 60:
-            explanation_parts.append(
-                f"\n\n✓ **Recommendation**: Good candidate for {project.name}. Consider assigning."
-            )
+            explanation += f"\n\n**Recommendation:**\n{employee.full_name} is a strong candidate for {project.name}. They possess the necessary skills and experience to contribute effectively to the project goals."
         else:
-            explanation_parts.append(
-                f"\n\n~ **Recommendation**: Moderate fit. Review other candidates."
-            )
-        
-        explanation = "".join(explanation_parts)
+            explanation += f"\n\n**Recommendation:**\nWhile {employee.full_name} has relevant capabilities, consider reviewing other candidates to ensure the best fit for {project.name}'s specific requirements."
         
         return jsonify({
             "success": True,
             "explanation": explanation,
             "employee_name": employee.full_name,
             "project_name": project.name,
-            "match_score": final_score,
-            "breakdown": {
-                "semantic_similarity": round(semantic_score, 1),
-                "performance": round((employee.performance_score or 75) * 0.25, 1),
-                "experience": min((employee.total_exp or 0) * 3, 15),
-                "availability": 10 if is_available_for_projects(employee_id) else 0,
-                "metrics_bonus": round((metric.calculate_overall_score() / 100) * 10, 1) if metric else 0
-            }
+            "match_score": final_score
         }), 200
         
     except Exception as e:
