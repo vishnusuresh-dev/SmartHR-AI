@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learning Path - {{ employee.full_name }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .header {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2em;
+            font-weight: bold;
+        }
+        .employee-details h1 {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .employee-details p {
+            color: #666;
+            margin: 3px 0;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        }
+        .card h2 {
+            font-size: 1.4em;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+        .skill-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin: 15px 0;
+        }
+        .skill-badge {
+            padding: 12px 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        .skill-badge.gap {
+            background: #fee;
+            color: #d63031;
+            border-left: 4px solid #d63031;
+        }
+        .learning-content {
+            line-height: 1.8;
+            color: #444;
+        }
+        .learning-content h3 {
+            margin-top: 25px;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        .learning-content ul {
+            margin-left: 20px;
+            margin-bottom: 15px;
+        }
+        .learning-content li {
+            margin: 8px 0;
+        }
+        .project-list {
+            display: grid;
+            gap: 12px;
+        }
+        .project-item {
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .project-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .project-desc {
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <div class="avatar-large">{{ employee.full_name[0] }}</div>
+                <div class="employee-details">
+                    <h1>{{ employee.full_name }}</h1>
+                    <p><i class="fas fa-id-card"></i> {{ employee.employee_id }}</p>
+                    <p><i class="fas fa-briefcase"></i> {{ employee.job_title or 'N/A' }} • {{ employee.department or 'N/A' }}</p>
+                </div>
+            </div>
+            <a href="/learning-paths" class="btn">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+        </div>
+
+        <div id="loadingState" class="card loading">
+            <i class="fas fa-spinner fa-spin" style="font-size: 2em; color: #667eea;"></i>
+            <p style="margin-top: 15px;">Generating personalized learning path...</p>
+        </div>
+
+        <div id="contentArea" style="display: none;">
+            <!-- Projects Card -->
+            <div class="card">
+                <h2><i class="fas fa-project-diagram" style="color: #667eea;"></i> Active Projects</h2>
+                <div id="projectsList" class="project-list"></div>
+            </div>
+
+            <!-- Skills Overview -->
+            <div class="card">
+                <h2><i class="fas fa-chart-bar" style="color: #48bb78;"></i> Skills Overview</h2>
+                
+                <h3 style="margin-top: 15px; color: #666; font-size: 1em;">Current Skills</h3>
+                <div id="currentSkills" class="skill-grid"></div>
+                
+                <h3 style="margin-top: 25px; color: #666; font-size: 1em;">Skills to Learn</h3>
+                <div id="skillGaps" class="skill-grid"></div>
+            </div>
+
+            <!-- Learning Path -->
+            <div class="card">
+                <h2><i class="fas fa-route" style="color: #ed8936;"></i> Personalized Learning Path</h2>
+                <div id="learningPath" class="learning-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const employeeId = "{{ employee.employee_id }}";
+
+        async function loadLearningPath() {
+            try {
+                const response = await fetch(`/api/learning-path/${employeeId}/generate`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.skill_gaps.length === 0) {
+                        document.getElementById('loadingState').innerHTML = `
+                            <i class="fas fa-check-circle" style="font-size: 3em; color: #48bb78;"></i>
+                            <h2 style="margin-top: 15px;">No Skill Gaps!</h2>
+                            <p>{{ employee.full_name }} has all required skills for current projects.</p>
+                        `;
+                        return;
+                    }
+
+                    renderProjects(data.projects);
+                    renderSkills(data.current_skills, data.skill_gaps);
+                    renderLearningPath(data.learning_path);
+
+                    document.getElementById('loadingState').style.display = 'none';
+                    document.getElementById('contentArea').style.display = 'block';
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate learning path');
+            }
+        }
+
+        function renderProjects(projects) {
+            const container = document.getElementById('projectsList');
+            
+            if (projects.length === 0) {
+                container.innerHTML = '<p style="color: #666;">Not assigned to any projects</p>';
+                return;
+            }
+
+            container.innerHTML = projects.map(proj => `
+                <div class="project-item">
+                    <div class="project-name">${proj.project_name}</div>
+                    <div class="project-desc">${proj.description || 'No description'}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderSkills(currentSkills, gaps) {
+            const currentContainer = document.getElementById('currentSkills');
+            const gapsContainer = document.getElementById('skillGaps');
+
+            if (currentSkills.length === 0) {
+                currentContainer.innerHTML = '<p style="color: #666;">No skills recorded</p>';
+            } else {
+                currentContainer.innerHTML = currentSkills.map(skill => 
+                    `<div class="skill-badge">${skill}</div>`
+                ).join('');
+            }
+
+            gapsContainer.innerHTML = gaps.map(skill => 
+                `<div class="skill-badge gap">${skill}</div>`
+            ).join('');
+        }
+
+        function renderLearningPath(pathText) {
+            const container = document.getElementById('learningPath');
+            
+            // Convert plain text to formatted HTML
+            let formatted = pathText
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>')
+                .replace(/(\d+\.\s+[A-Z\s]+)/g, '<h3>$1</h3>')
+                .replace(/- /g, '<li>')
+                .replace(/<br><li>/g, '<ul><li>')
+                .replace(/(<li>.*?)(<h3>|$)/gs, '$1</ul>$2');
+
+            container.innerHTML = `<p>${formatted}</p>`;
+        }
+
+        window.addEventListener('DOMContentLoaded', loadLearningPath);
+    </script>
+</body>
+</html>
