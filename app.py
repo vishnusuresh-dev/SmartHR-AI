@@ -731,7 +731,6 @@ def calculate_performance_metrics(employee):
     }
 
 
-<<<<<<< HEAD
 def get_performance_trend(score):
     """Determine performance trend"""
     if score is None:
@@ -1070,8 +1069,6 @@ This project currently has no assigned members. It is available for employee ass
         traceback.print_exc()
         return False
 
-=======
->>>>>>> 8840de1d5b264b82069798abf2c1ab140507b041
 # ======================================================
 # AUTH ROUTES
 # ======================================================
@@ -1225,16 +1222,12 @@ def submit():
         db.session.add(e)
         db.session.commit()
         
-<<<<<<< HEAD
+
         sync_employee_to_vector_db(e.employee_id)
         
-=======
-<<<<<<< HEAD
-        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully! Add performance metrics from the Performance page.", "success")
-=======
->>>>>>> 8840de1d5b264b82069798abf2c1ab140507b041
+
         flash(f" Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
->>>>>>> 8e050f36fc0ecc4d54252a6e9a0f90150d1b8f41
+
         return redirect("/employees")
         
     except Exception as ex:
