@@ -42,12 +42,11 @@
             gap: 0.75rem;
         }
 
-        .logo-icon {
-            background: linear-gradient(to bottom right, #4f46e5, #9333ea);
-            padding: 0.5rem;
-            border-radius: 0.75rem;
-            color: white;
-            font-size: 1.75rem;
+        .logo-image {
+            width: 45px;
+            height: 50px;
+            object-fit: contain;
+            border-radius: 10px; /* optional */
         }
 
         .logo-text h1 {
