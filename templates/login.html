@@ -28,6 +28,7 @@
             overflow: hidden;
             max-width: 450px;
             width: 100%;
+            padding-top: 20px;
         }
 
         .login-header {
@@ -37,10 +38,35 @@
             text-align: center;
         }
 
-        .logo-icon {
-            font-size: 64px;
-            margin-bottom: 15px;
-            animation: pulse 2s ease-in-out infinite;
+        .logo-section {
+            display: flex;
+            flex-direction: column;   
+            align-items: center;     
+            justify-content: center; 
+            gap: 12px;
+            padding: 30px 0;
+        }
+
+
+        .logo-image {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            border-radius: 10px; /* optional */
+        }
+
+        .logo-text h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #4f46e5, #9333ea);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-text p {
+            font-size: 0.75rem;
+            color: #6b7280;
         }
 
         @keyframes pulse {
@@ -311,9 +337,13 @@
 </head>
 <body>
     <div class="login-container">
-        <div class="login-header">
-            <div class="logo-icon">🧠</div>
-            <h1>Smart HR AI</h1>
+        <div class="logo-section">
+            <img src="{{ url_for('static', filename='images/smart.png') }}"
+                alt="Smart HR AI Logo"
+                class="logo-image">
+            <div class="logo-text">
+                <h1>Smart HR AI</h1>
+            </div>
         </div>
 
         <div class="login-content">
