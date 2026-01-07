@@ -116,15 +116,31 @@
         }
         .learning-content h3 {
             margin-top: 25px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             color: #667eea;
+            font-size: 1.2em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        .learning-content h4 {
+            margin-top: 18px;
+            margin-bottom: 10px;
+            color: #764ba2;
+            font-size: 1.05em;
         }
         .learning-content ul {
-            margin-left: 20px;
+            margin-left: 25px;
             margin-bottom: 15px;
         }
         .learning-content li {
             margin: 8px 0;
+            line-height: 1.6;
+        }
+        .learning-content p {
+            margin-bottom: 15px;
+        }
+        .learning-content strong {
+            color: #333;
         }
         .project-list {
             display: grid;
@@ -144,6 +160,19 @@
         .project-desc {
             font-size: 0.9em;
             color: #666;
+        }
+        .timeline-item {
+            padding: 12px;
+            background: #f0f4ff;
+            border-left: 3px solid #667eea;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .resource-box {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -266,16 +295,75 @@
         function renderLearningPath(pathText) {
             const container = document.getElementById('learningPath');
             
-            // Convert plain text to formatted HTML
-            let formatted = pathText
-                .replace(/\n\n/g, '</p><p>')
-                .replace(/\n/g, '<br>')
-                .replace(/(\d+\.\s+[A-Z\s]+)/g, '<h3>$1</h3>')
-                .replace(/- /g, '<li>')
-                .replace(/<br><li>/g, '<ul><li>')
-                .replace(/(<li>.*?)(<h3>|$)/gs, '$1</ul>$2');
-
-            container.innerHTML = `<p>${formatted}</p>`;
+            // Parse the learning path intelligently
+            let html = '';
+            const lines = pathText.split('\n');
+            let inList = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+                
+                if (!line) {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    continue;
+                }
+                
+                // Main section headers (all caps or starting with number)
+                if (/^[0-9]+\.\s+[A-Z\s]+$/.test(line) || /^[A-Z\s]{10,}$/.test(line)) {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    html += `<h3>${line}</h3>`;
+                }
+                // Subsection headers (Title Case with colons or all caps medium length)
+                else if (line.match(/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*:/) || 
+                         (line.match(/^[A-Z\s]{5,25}$/) && !line.includes('('))) {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    html += `<h4>${line}</h4>`;
+                }
+                // List items
+                else if (line.startsWith('-') || line.startsWith('•') || line.match(/^\d+\./)) {
+                    if (!inList) {
+                        html += '<ul>';
+                        inList = true;
+                    }
+                    // Remove the bullet/number
+                    const cleanLine = line.replace(/^[-•]\s*|\d+\.\s*/, '');
+                    html += `<li>${cleanLine}</li>`;
+                }
+                // Regular paragraphs
+                else {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    
+                    // Check if it's a timeline/week item
+                    if (line.match(/^Week\s+\d+/i) || line.match(/^Day\s+\d+/i)) {
+                        html += `<div class="timeline-item">${line}</div>`;
+                    }
+                    // Check if it contains resource mentions
+                    else if (line.match(/course|tutorial|documentation|book|video|website/i)) {
+                        html += `<div class="resource-box">${line}</div>`;
+                    }
+                    else {
+                        html += `<p>${line}</p>`;
+                    }
+                }
+            }
+            
+            if (inList) {
+                html += '</ul>';
+            }
+            
+            container.innerHTML = html;
         }
 
         window.addEventListener('DOMContentLoaded', loadLearningPath);
