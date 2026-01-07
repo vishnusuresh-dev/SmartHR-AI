@@ -154,6 +154,16 @@
             background: #fee;
             color: #d63031;
         }
+        .skill-tag.more {
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .skill-tag.more:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
         .card-actions {
             display: flex;
             gap: 10px;
@@ -234,6 +244,12 @@
             color: #48bb78;
             margin-bottom: 15px;
         }
+        .all-skills-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 8px;
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
@@ -282,11 +298,22 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modalTitle">Skill Gap Explanation</h2>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
+                <button class="close-btn" onclick="closeModal('explanationModal')">&times;</button>
             </div>
             <div id="modalBody" class="explanation-text">
                 <i class="fas fa-spinner fa-spin"></i> Loading...
             </div>
+        </div>
+    </div>
+
+    <!-- All Skills Modal -->
+    <div id="allSkillsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="allSkillsTitle">All Skill Gaps</h2>
+                <button class="close-btn" onclick="closeModal('allSkillsModal')">&times;</button>
+            </div>
+            <div id="allSkillsBody" class="all-skills-grid"></div>
         </div>
     </div>
 
@@ -340,12 +367,13 @@
                 const card = document.createElement('div');
                 card.className = 'employee-card';
                 
-                const skillGapTags = emp.skill_gaps.slice(0, 5).map(skill => 
+                const displayLimit = 5;
+                const skillGapTags = emp.skill_gaps.slice(0, displayLimit).map(skill => 
                     `<span class="skill-tag gap">${skill}</span>`
                 ).join('');
 
-                const moreGaps = emp.skill_gaps.length > 5 ? 
-                    `<span class="skill-tag gap">+${emp.skill_gaps.length - 5} more</span>` : '';
+                const moreGaps = emp.skill_gaps.length > displayLimit ? 
+                    `<span class="skill-tag gap more" onclick="showAllSkills('${emp.employee_id}', '${emp.full_name}')">+${emp.skill_gaps.length - displayLimit} more</span>` : '';
 
                 card.innerHTML = `
                     <div class="employee-header">
@@ -380,6 +408,20 @@
                 
                 grid.appendChild(card);
             });
+        }
+
+        function showAllSkills(employeeId, employeeName) {
+            const employee = employeesData.find(e => e.employee_id === employeeId);
+            if (!employee) return;
+
+            document.getElementById('allSkillsTitle').textContent = `All Skill Gaps - ${employeeName}`;
+            
+            const skillsHtml = employee.skill_gaps.map(skill => 
+                `<span class="skill-tag gap">${skill}</span>`
+            ).join('');
+            
+            document.getElementById('allSkillsBody').innerHTML = skillsHtml;
+            document.getElementById('allSkillsModal').classList.add('active');
         }
 
         async function explainGap(employeeId, skill) {
@@ -417,13 +459,15 @@
             window.location.href = `/learning-path/${employeeId}`;
         }
 
-        function closeModal() {
-            document.getElementById('explanationModal').classList.remove('active');
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
         }
 
         // Close modal on outside click
-        document.getElementById('explanationModal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) closeModal(this.id);
+            });
         });
 
         // Load on page load
