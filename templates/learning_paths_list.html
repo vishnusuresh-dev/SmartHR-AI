@@ -395,15 +395,11 @@
                             ${moreGaps}
                         </div>
                     </div>
-
-                    <div class="card-actions">
-                        <button class="card-btn btn-secondary" onclick="explainGap('${emp.employee_id}', '${emp.skill_gaps[0]}')">
-                            <i class="fas fa-question-circle"></i> Why?
-                        </button>
-                        <button class="card-btn btn-primary" onclick="viewLearningPath('${emp.employee_id}')">
-                            <i class="fas fa-route"></i> View Path
-                        </button>
-                    </div>
+                        <div class="card-actions">
+                            <button class="card-btn btn-primary" onclick="viewLearningPath('${emp.employee_id}')" style="width: 100%;">
+                                <i class="fas fa-route"></i> View Learning Path
+                            </button>
+                        </div>
                 `;
                 
                 grid.appendChild(card);
@@ -422,37 +418,6 @@
             
             document.getElementById('allSkillsBody').innerHTML = skillsHtml;
             document.getElementById('allSkillsModal').classList.add('active');
-        }
-
-        async function explainGap(employeeId, skill) {
-            document.getElementById('explanationModal').classList.add('active');
-            document.getElementById('modalTitle').textContent = `Why learn ${skill}?`;
-            document.getElementById('modalBody').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating explanation...';
-
-            try {
-                const response = await fetch(`/api/learning-path/${employeeId}/explain-gap`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({skill: skill})
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    document.getElementById('modalBody').innerHTML = `
-                        <p style="margin-bottom: 15px;"><strong>Skill:</strong> ${data.skill}</p>
-                        <p style="margin-bottom: 15px;">${data.explanation}</p>
-                        ${data.projects_requiring.length > 0 ? 
-                            `<p><strong>Required for projects:</strong> ${data.projects_requiring.join(', ')}</p>` 
-                            : ''}
-                    `;
-                } else {
-                    document.getElementById('modalBody').innerHTML = '<p>Error loading explanation</p>';
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                document.getElementById('modalBody').innerHTML = '<p>Failed to load explanation</p>';
-            }
         }
 
         function viewLearningPath(employeeId) {
