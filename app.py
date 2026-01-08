@@ -2672,6 +2672,322 @@ def assign_employee_to_project_fixed():
             "success": False, 
             "error": f"Failed to assign: {str(e)}"
         }), 500
+        
+# ======================================================
+# LEARNING PATH ROUTES
+# ======================================================
+
+@app.route("/learning-paths")
+def learning_paths():
+    """Display all employees with skill gaps"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    return render_template("learning_paths_list.html")
+
+
+@app.route("/api/learning-paths/analyze", methods=["GET"])
+def analyze_skill_gaps():
+    """Analyze skill gaps for all employees using RAG"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        employees = Employee.query.all()
+        results = []
+        
+        for emp in employees:
+            # Get projects employee is assigned to
+            project_memberships = ProjectMember.query.filter_by(employee_id=emp.employee_id).all()
+            
+            if not project_memberships:
+                continue  # Skip employees not in projects
+            
+            # Get required skills from projects
+            required_skills = set()
+            project_names = []
+            
+            for pm in project_memberships:
+                project = Project.query.get(pm.project_id)
+                if project:
+                    project_names.append(project.name)
+                    # Extract skills from project description using RAG
+                    project_skills = extract_project_skills(project)
+                    required_skills.update(project_skills)
+            
+            # Get employee's current skills
+            current_skills = set(emp.skills.keys()) if emp.skills else set()
+            
+            # Find skill gaps
+            skill_gaps = required_skills - current_skills
+            
+            if skill_gaps:
+                results.append({
+                    "employee_id": emp.employee_id,
+                    "full_name": emp.full_name,
+                    "department": emp.department,
+                    "job_title": emp.job_title,
+                    "current_skills": list(current_skills),
+                    "required_skills": list(required_skills),
+                    "skill_gaps": list(skill_gaps),
+                    "gap_count": len(skill_gaps),
+                    "projects": project_names,
+                    "performance_score": emp.performance_score
+                })
+        
+        # Sort by gap count (highest first)
+        results.sort(key=lambda x: x['gap_count'], reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "employees": results
+        }), 200
+        
+    except Exception as e:
+        print(f"Error analyzing skill gaps: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/learning-path/<string:employee_id>")
+def employee_learning_path(employee_id):
+    """Display individual employee learning path"""
+    if "user" not in session:
+        return redirect("/login")
+    
+    employee = Employee.query.filter_by(employee_id=employee_id).first_or_404()
+    
+    return render_template("learning_path_detail.html", employee=employee)
+
+
+@app.route("/api/learning-path/<string:employee_id>/generate", methods=["POST"])
+def generate_learning_path(employee_id):
+    """Generate learning path using RAG"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        employee = Employee.query.filter_by(employee_id=employee_id).first()
+        if not employee:
+            return jsonify({"success": False, "error": "Employee not found"}), 404
+        
+        # Get projects
+        project_memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+        projects = []
+        required_skills = set()
+        
+        for pm in project_memberships:
+            project = Project.query.get(pm.project_id)
+            if project:
+                projects.append({
+                    "project_name": project.name,
+                    "description": project.description
+                })
+                project_skills = extract_project_skills(project)
+                required_skills.update(project_skills)
+        
+        # Get current skills
+        current_skills = set(employee.skills.keys()) if employee.skills else set()
+        skill_gaps = required_skills - current_skills
+        
+        if not skill_gaps:
+            return jsonify({
+                "success": True,
+                "message": "No skill gaps found",
+                "skill_gaps": [],
+                "learning_path": None
+            }), 200
+        
+        # Generate learning path using LLM
+        learning_path = generate_learning_path_with_rag(
+            employee=employee,
+            skill_gaps=list(skill_gaps),
+            current_skills=list(current_skills),
+            projects=projects
+        )
+        
+        return jsonify({
+            "success": True,
+            "employee": {
+                "employee_id": employee.employee_id,
+                "full_name": employee.full_name,
+                "department": employee.department,
+                "job_title": employee.job_title
+            },
+            "current_skills": list(current_skills),
+            "required_skills": list(required_skills),
+            "skill_gaps": list(skill_gaps),
+            "projects": projects,
+            "learning_path": learning_path
+        }), 200
+        
+    except Exception as e:
+        print(f"Error generating learning path: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/learning-path/<string:employee_id>/explain-gap", methods=["POST"])
+def explain_skill_gap(employee_id):
+    """Explain why employee has specific skill gaps using RAG"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        skill_gap = data.get("skill")
+        
+        employee = Employee.query.filter_by(employee_id=employee_id).first()
+        if not employee:
+            return jsonify({"success": False, "error": "Employee not found"}), 404
+        
+        # Get projects requiring this skill
+        project_memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+        relevant_projects = []
+        
+        for pm in project_memberships:
+            project = Project.query.get(pm.project_id)
+            if project:
+                project_skills = extract_project_skills(project)
+                if skill_gap.lower() in [s.lower() for s in project_skills]:
+                    relevant_projects.append(project.name)
+        
+        # Generate explanation using LLM
+        explanation = generate_gap_explanation(
+            employee=employee,
+            skill_gap=skill_gap,
+            projects=relevant_projects
+        )
+        
+        return jsonify({
+            "success": True,
+            "skill": skill_gap,
+            "explanation": explanation,
+            "projects_requiring": relevant_projects
+        }), 200
+        
+    except Exception as e:
+        print(f"Error explaining skill gap: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ======================================================
+# HELPER FUNCTIONS FOR LEARNING PATH
+# ======================================================
+
+def extract_project_skills(project):
+    """Extract required skills from project using RAG"""
+    try:
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.1)
+        
+        prompt = f"""Analyze this project and list ONLY the technical skills required.
+
+Project: {project.name}
+Description: {project.description or 'No description'}
+
+List technical skills as comma-separated values (e.g., Python, React, Docker, AWS).
+Return ONLY the skill names, nothing else.
+
+Skills:"""
+        
+        response = llm.invoke(prompt)
+        skills_text = response.content.strip()
+        
+        # Parse skills
+        skills = [s.strip() for s in skills_text.split(',')]
+        skills = [s for s in skills if s and len(s) > 1]
+        
+        return skills
+        
+    except Exception as e:
+        print(f"Error extracting project skills: {e}")
+        return []
+
+
+def generate_learning_path_with_rag(employee, skill_gaps, current_skills, projects):
+    """Generate personalized learning path using RAG"""
+    try:
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.3)
+        
+        projects_text = "\n".join([f"- {p['project_name']}: {p['description'] or 'No description'}" for p in projects])
+        
+        prompt = f"""You are a learning path advisor. Create a structured learning plan for this employee.
+
+EMPLOYEE INFO:
+Name: {employee.full_name}
+Job Title: {employee.job_title}
+Department: {employee.department}
+Current Skills: {', '.join(current_skills) if current_skills else 'None listed'}
+
+PROJECTS ASSIGNED:
+{projects_text}
+
+SKILL GAPS IDENTIFIED:
+{', '.join(skill_gaps)}
+
+Create a learning path with these sections:
+
+1. PRIORITY SKILLS (List 3-5 skills to learn first)
+   For each skill:
+   - Skill name
+   - Why it's needed (1 sentence)
+   - Estimated learning time
+
+2. LEARNING ROADMAP
+   For EACH skill gap, provide:
+   - Core concepts to learn (3-5 bullet points)
+   - Recommended resources (3-4 specific resources like "Python Official Tutorial", "Real Python", "Codecademy Python Course")
+   - Practice projects (2-3 small projects to build)
+   - Estimated timeline
+
+3. WEEKLY SCHEDULE
+   Suggest a realistic week-by-week plan (4-8 weeks)
+
+Keep it practical and actionable. Use actual course names and resources.
+
+LEARNING PATH:"""
+        
+        response = llm.invoke(prompt)
+        return response.content.strip()
+        
+    except Exception as e:
+        print(f"Error generating learning path: {e}")
+        return "Unable to generate learning path at this time."
+
+
+def generate_gap_explanation(employee, skill_gap, projects):
+    """Explain why employee needs this skill using RAG"""
+    try:
+        llm = ChatOllama(model=LLM_MODEL, temperature=0.2)
+        
+        projects_text = ", ".join(projects) if projects else "current projects"
+        
+        prompt = f"""Explain why {employee.full_name} needs to learn {skill_gap}.
+
+Context:
+- Employee: {employee.full_name} ({employee.job_title})
+- Current role: {employee.department}
+- Projects requiring this skill: {projects_text}
+
+Write a clear 2-3 sentence explanation of:
+1. Why this skill is needed for their projects
+2. How it will help them perform better
+3. Real-world application in their work
+
+Be specific and practical.
+
+Explanation:"""
+        
+        response = llm.invoke(prompt)
+        return response.content.strip()
+        
+    except Exception as e:
+        print(f"Error generating explanation: {e}")
+        return f"This skill is required for {projects_text} and will enhance your ability to contribute effectively."
 # ======================================================
 # HELPER FUNCTIONS FOR DATA PREPARATION
 # ======================================================
