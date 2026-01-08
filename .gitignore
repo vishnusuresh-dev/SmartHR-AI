@@ -1,4 +1,55 @@
+# ================================
+# Python
+# ================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
 .env
-.pyc"ayla_data/Oasis33_JO_data/chroma_db/" 
-__pycache__
-ayla_data/Oasis33_JO_data/chroma_db/
+.venv
+venv/
+env/
+
+# ================================
+# OS / Editor
+# ================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ================================
+# Logs
+# ================================
+*.log
+
+# ================================
+# Database files
+# ================================
+*.sqlite
+*.sqlite3
+*.db
+
+# ================================
+# ChromaDB / Vector DB (CRITICAL)
+# ================================
+chroma_db/
+**/chroma_db/
+**/chroma_db/**
+
+# Ignore all binary index files
+*.bin
+*.idx
+
+# ================================
+# App generated data
+# ================================
+ayla_data/
+ayla_data/**
+
+# ================================
+# Cache & temp
+# ================================
+.cache/
+tmp/
