@@ -40,7 +40,143 @@
             transform: translateY(-2px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
         }
+        .alert-floating {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 350px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .is-invalid { border-color: #dc3545 !important; }
+        .is-valid { border-color: #198754 !important; }
+        .validation-message {
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
     </style>
+
+    <script>
+        const CURRENT_EMPLOYEE_ID = "{{ employee.employee_id }}";
+        const CURRENT_EMAIL = "{{ employee.email }}";
+        const CURRENT_PHONE = "{{ employee.phone or '' }}";
+
+        async function validateEmail(email) {
+            if (!email || email === CURRENT_EMAIL) {
+                document.querySelector('input[name="email"]').classList.remove('is-invalid', 'is-valid');
+                document.getElementById('email-feedback').innerHTML = '';
+                return true;
+            }
+            
+            const response = await fetch('/api/validate-email', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({email: email, exclude_id: CURRENT_EMPLOYEE_ID})
+            });
+            
+            const data = await response.json();
+            const emailInput = document.querySelector('input[name="email"]');
+            const feedbackDiv = document.getElementById('email-feedback');
+            
+            if (data.exists) {
+                emailInput.classList.add('is-invalid');
+                emailInput.classList.remove('is-valid');
+                feedbackDiv.innerHTML = `<div class="text-danger validation-message"><i class="bi bi-exclamation-circle"></i> ${data.message}</div>`;
+                return false;
+            } else {
+                emailInput.classList.add('is-valid');
+                emailInput.classList.remove('is-invalid');
+                feedbackDiv.innerHTML = `<div class="text-success validation-message"><i class="bi bi-check-circle"></i> Email available</div>`;
+                return true;
+            }
+        }
+
+        async function validatePhone(phone) {
+            if (!phone || phone === CURRENT_PHONE) {
+                document.querySelector('input[name="phone"]').classList.remove('is-invalid', 'is-valid');
+                document.getElementById('phone-feedback').innerHTML = '';
+                return true;
+            }
+            
+            const response = await fetch('/api/validate-phone', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone: phone, exclude_id: CURRENT_EMPLOYEE_ID})
+            });
+            
+            const data = await response.json();
+            const phoneInput = document.querySelector('input[name="phone"]');
+            const feedbackDiv = document.getElementById('phone-feedback');
+            
+            if (data.exists) {
+                phoneInput.classList.add('is-invalid');
+                phoneInput.classList.remove('is-valid');
+                feedbackDiv.innerHTML = `<div class="text-danger validation-message"><i class="bi bi-exclamation-circle"></i> ${data.message}</div>`;
+                return false;
+            } else {
+                phoneInput.classList.add('is-valid');
+                phoneInput.classList.remove('is-invalid');
+                feedbackDiv.innerHTML = `<div class="text-success validation-message"><i class="bi bi-check-circle"></i> Phone available</div>`;
+                return true;
+            }
+        }
+
+        let emailTimeout, phoneTimeout;
+
+        function debounceEmail(email) {
+            clearTimeout(emailTimeout);
+            emailTimeout = setTimeout(() => validateEmail(email), 500);
+        }
+
+        function debouncePhone(phone) {
+            clearTimeout(phoneTimeout);
+            phoneTimeout = setTimeout(() => validatePhone(phone), 500);
+        }
+
+        async function validateForm(event) {
+            const email = document.querySelector('input[name="email"]').value;
+            const phone = document.querySelector('input[name="phone"]').value;
+            
+            const emailValid = await validateEmail(email);
+            const phoneValid = await validatePhone(phone);
+            
+            if (emailValid === false || phoneValid === false) {
+                event.preventDefault();
+                showAlert('Please fix validation errors before saving', 'danger');
+                return false;
+            }
+            
+            return true;
+        }
+
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show alert-floating`;
+            alertDiv.innerHTML = `
+                <i class="bi bi-${type === 'danger' ? 'exclamation-triangle' : type === 'success' ? 'check-circle' : 'info-circle'}"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const alerts = document.querySelectorAll('.alert:not(.alert-floating)');
+            alerts.forEach(alert => {
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 5000);
+            });
+        });
+    </script>
 </head>
 <body>
 
@@ -49,6 +185,7 @@
         {% if messages %}
             {% for category, message in messages %}
             <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                <i class="bi bi-{{ 'exclamation-triangle' if category == 'danger' else 'check-circle' if category == 'success' else 'info-circle' }}"></i>
                 {{ message }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
@@ -64,64 +201,64 @@
             </a>
         </div>
 
-        <form method="POST" action="{{ url_for('edit_employee', emp_id=employee.id) }}">
+        <form method="POST" action="{{ url_for('edit_employee', emp_id=employee.id) }}" onsubmit="return validateForm(event)">
             <div class="row">
-                <!-- Employee ID (Read-only) -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Employee ID</label>
                     <input type="text" class="form-control" value="{{ employee.employee_id }}" disabled>
                 </div>
 
-                <!-- Full Name -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Full Name *</label>
                     <input type="text" name="full_name" class="form-control" 
                            value="{{ employee.full_name }}" required>
                 </div>
 
-                <!-- Email -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Email *</label>
-                    <input type="email" name="email" class="form-control" 
-                           value="{{ employee.email }}" required>
+                    <input type="email" 
+                           name="email" 
+                           class="form-control" 
+                           value="{{ employee.email }}"
+                           onkeyup="debounceEmail(this.value)"
+                           required>
+                    <div id="email-feedback"></div>
                 </div>
 
-                <!-- Phone -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Phone</label>
-                    <input type="tel" name="phone" class="form-control" 
-                           value="{{ employee.phone or '' }}">
+                    <input type="tel" 
+                           name="phone" 
+                           class="form-control" 
+                           value="{{ employee.phone or '' }}"
+                           onkeyup="debouncePhone(this.value)">
+                    <div id="phone-feedback"></div>
                 </div>
 
-                <!-- Department -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Department</label>
                     <input type="text" name="department" class="form-control" 
                            value="{{ employee.department or '' }}">
                 </div>
 
-                <!-- Job Title -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Job Title</label>
                     <input type="text" name="job_title" class="form-control" 
                            value="{{ employee.job_title or '' }}">
                 </div>
 
-                <!-- Total Experience -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Total Experience (years)</label>
                     <input type="number" name="total_exp" class="form-control" 
                            step="0.1" value="{{ employee.total_exp or 0 }}">
                 </div>
 
-                <!-- Manager -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Manager</label>
                     <input type="text" name="manager" class="form-control" 
                            value="{{ employee.manager or '' }}">
                 </div>
 
-                <!-- Status -->
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Status</label>
                     <select name="status" class="form-select">
