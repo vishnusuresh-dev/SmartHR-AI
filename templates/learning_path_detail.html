@@ -187,9 +187,14 @@
                     <p><i class="fas fa-briefcase"></i> {{ employee.job_title or 'N/A' }} • {{ employee.department or 'N/A' }}</p>
                 </div>
             </div>
-            <a href="/learning-paths" class="btn">
-                <i class="fas fa-arrow-left"></i> Back
-            </a>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" onclick="downloadPDF()" style="background: #ed8936;" id="downloadBtn">
+                    <i class="fas fa-download"></i> Download PDF
+                </button>
+                <a href="/learning-paths" class="btn">
+                    <i class="fas fa-arrow-left"></i> Back
+                </a>
+            </div>
         </div>
 
         <div id="loadingState" class="card loading">
@@ -224,6 +229,39 @@
     </div>
 
     <script>
+        async function downloadPDF() {
+    const btn = document.getElementById('downloadBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch(`/api/learning-path/${employeeId}/download-pdf`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `learning_path_${employeeId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } else {
+            alert('Failed to generate PDF');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error downloading PDF');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
         const employeeId = "{{ employee.employee_id }}";
 
         async function loadLearningPath() {

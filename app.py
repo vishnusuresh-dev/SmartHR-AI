@@ -3,7 +3,13 @@ import uuid
 import json
 from datetime import datetime, timedelta
 import random
-
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+from io import BytesIO
 from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON
@@ -13,6 +19,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
 import os
+from flask import send_file
+import re
 
 load_dotenv()
 
@@ -3037,7 +3045,190 @@ def calculate_data_quality(employees):
     )
     
     return round((avg_completeness + consistency_score) / 2, 1)
+# ADD THIS NEW ENDPOINT (around line 1450, before the final routes):
 
+@app.route("/api/learning-path/<string:employee_id>/download-pdf", methods=["POST"])
+def download_learning_path_pdf(employee_id):
+    """Generate and download learning path as PDF"""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    try:
+        # Get employee data
+        employee = Employee.query.filter_by(employee_id=employee_id).first()
+        if not employee:
+            return jsonify({"success": False, "error": "Employee not found"}), 404
+        
+        # Get learning path data
+        project_memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+        projects = []
+        required_skills = set()
+        
+        for pm in project_memberships:
+            project = Project.query.get(pm.project_id)
+            if project:
+                projects.append({
+                    "project_name": project.name,
+                    "description": project.description
+                })
+                project_skills = extract_project_skills(project)
+                required_skills.update(project_skills)
+        
+        current_skills = set(employee.skills.keys()) if employee.skills else set()
+        skill_gaps = required_skills - current_skills
+        
+        # Generate learning path
+        learning_path_text = generate_learning_path_with_rag(
+            employee=employee,
+            skill_gaps=list(skill_gaps),
+            current_skills=list(current_skills),
+            projects=projects
+        )
+        
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        # Define styles
+        styles = getSampleStyleSheet()
+        
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Title'],
+            fontSize=24,
+            textColor=colors.HexColor('#667eea'),
+            spaceAfter=30,
+            alignment=TA_CENTER
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading1'],
+            fontSize=16,
+            textColor=colors.HexColor('#764ba2'),
+            spaceAfter=12,
+            spaceBefore=20
+        )
+        
+        subheading_style = ParagraphStyle(
+            'CustomSubHeading',
+            parent=styles['Heading2'],
+            fontSize=13,
+            textColor=colors.HexColor('#667eea'),
+            spaceAfter=10,
+            spaceBefore=15
+        )
+        
+        body_style = ParagraphStyle(
+            'CustomBody',
+            parent=styles['BodyText'],
+            fontSize=11,
+            leading=16,
+            alignment=TA_JUSTIFY,
+            spaceAfter=10
+        )
+        
+        # Build PDF content
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"Learning Path for {employee.full_name}", title_style))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # Employee Info Table
+        emp_data = [
+            ['Employee ID:', employee.employee_id],
+            ['Job Title:', employee.job_title or 'N/A'],
+            ['Department:', employee.department or 'N/A'],
+            ['Email:', employee.email or 'N/A']
+        ]
+        
+        emp_table = Table(emp_data, colWidths=[2*inch, 4*inch])
+        emp_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f2f5')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+        ]))
+        story.append(emp_table)
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Projects Section
+        if projects:
+            story.append(Paragraph("Active Projects", heading_style))
+            for proj in projects:
+                story.append(Paragraph(f"<b>{proj['project_name']}</b>", body_style))
+                story.append(Paragraph(proj['description'] or 'No description', body_style))
+                story.append(Spacer(1, 0.1*inch))
+        
+        # Skills Overview
+        story.append(Paragraph("Skills Overview", heading_style))
+        
+        story.append(Paragraph("Current Skills:", subheading_style))
+        if current_skills:
+            skills_text = ", ".join(sorted(current_skills))
+            story.append(Paragraph(skills_text, body_style))
+        else:
+            story.append(Paragraph("No skills recorded", body_style))
+        
+        story.append(Spacer(1, 0.15*inch))
+        story.append(Paragraph("Skills to Learn:", subheading_style))
+        if skill_gaps:
+            gaps_text = ", ".join(sorted(skill_gaps))
+            story.append(Paragraph(gaps_text, body_style))
+        else:
+            story.append(Paragraph("No skill gaps identified", body_style))
+        
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Learning Path Content
+        story.append(Paragraph("Personalized Learning Path", heading_style))
+        story.append(Spacer(1, 0.1*inch))
+        
+        # Parse learning path text
+        lines = learning_path_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                story.append(Spacer(1, 0.1*inch))
+                continue
+            
+            # Main headers (all caps or numbered)
+            if re.match(r'^[0-9]+\.\s+[A-Z\s]+$', line) or re.match(r'^[A-Z\s]{10,}$', line):
+                story.append(Spacer(1, 0.15*inch))
+                story.append(Paragraph(line, heading_style))
+            # Subheadings
+            elif line.endswith(':') or re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*:', line):
+                story.append(Paragraph(line, subheading_style))
+            # Bullet points
+            elif line.startswith('-') or line.startswith('•'):
+                clean_line = line.replace('-', '•', 1)
+                story.append(Paragraph(clean_line, body_style))
+            # Regular text
+            else:
+                story.append(Paragraph(line, body_style))
+        
+        # Build PDF
+        doc.build(story)
+        
+        # Return PDF
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'learning_path_{employee_id}.pdf'
+        )
+        
+    except Exception as e:
+        print(f"Error generating PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 # ======================================================
 # DB INIT
 # ======================================================
