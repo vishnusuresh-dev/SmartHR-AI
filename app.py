@@ -49,12 +49,12 @@ class Employee(db.Model):
     __tablename__ = "employees"
 
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.String(64), unique=True, nullable=False)  # GLOBAL ID
+    employee_id = db.Column(db.String(64), unique=True, nullable=False)
     full_name = db.Column(db.String(200), nullable=False)
-    email = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(200), nullable=False, unique=True)  # ADD unique=True
     password = db.Column(db.String(200))
     dob = db.Column(db.Date)
-    phone = db.Column(db.String(50))
+    phone = db.Column(db.String(50), unique=True)  # ADD unique=True
     department = db.Column(db.String(200))
     job_title = db.Column(db.String(200))
     total_exp = db.Column(db.Float)
@@ -65,8 +65,6 @@ class Employee(db.Model):
     status = db.Column(db.String(50))
     manager = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # NEW: Performance field
     performance_score = db.Column(db.Float, default=75.0)
 
     def to_dict(self):
@@ -78,8 +76,6 @@ class Employee(db.Model):
             "job_title": self.job_title,
             "performance_score": self.performance_score
         }
-
-
 # ---------------------------
 # Project model
 # ---------------------------
@@ -1064,9 +1060,64 @@ This project currently has no assigned members. It is available for employee ass
         return False
 
 # ======================================================
+# VALIDATION ROUTES
+# ======================================================
+@app.route("/api/validate-email", methods=["POST"])
+def validate_email_api():
+    """API endpoint for real-time email validation"""
+    data = request.get_json()
+    email = data.get("email", "").strip()
+    exclude_id = data.get("exclude_id")  # For edit form
+    
+    if not email:
+        return jsonify({"exists": False}), 200
+    
+    query = Employee.query.filter_by(email=email)
+    
+    # Exclude current employee when editing
+    if exclude_id:
+        query = query.filter(Employee.employee_id != exclude_id)
+    
+    existing = query.first()
+    
+    if existing:
+        return jsonify({
+            "exists": True,
+            "message": f"Email already used by {existing.full_name} ({existing.employee_id})"
+        }), 200
+    
+    return jsonify({"exists": False}), 200
+
+
+@app.route("/api/validate-phone", methods=["POST"])
+def validate_phone_api():
+    """API endpoint for real-time phone validation"""
+    data = request.get_json()
+    phone = data.get("phone", "").strip()
+    exclude_id = data.get("exclude_id")  # For edit form
+    
+    if not phone:
+        return jsonify({"exists": False}), 200
+    
+    query = Employee.query.filter_by(phone=phone)
+    
+    # Exclude current employee when editing
+    if exclude_id:
+        query = query.filter(Employee.employee_id != exclude_id)
+    
+    existing = query.first()
+    
+    if existing:
+        return jsonify({
+            "exists": True,
+            "message": f"Phone already used by {existing.full_name} ({existing.employee_id})"
+        }), 200
+    
+    return jsonify({"exists": False}), 200
+
+# ======================================================
 # AUTH ROUTES
 # ======================================================
-
 @app.route("/", methods=["GET", "POST"])
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -1115,30 +1166,45 @@ def form():
 @app.route("/submit", methods=["POST"])
 def submit():
     try:
-        # Generate or use provided employee ID
         employee_id = request.form.get("employee_id") or f"EMP{uuid.uuid4().hex[:6].upper()}"
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
         
-        # Check if employee ID already exists
+        # CHECK 1: Employee ID already exists
         existing = Employee.query.filter_by(employee_id=employee_id).first()
         if existing:
             flash(f"Employee ID {employee_id} already exists", "danger")
             return redirect("/form")
         
-        # Parse skills from arrays (skill_name[] and skill_exp[])
+        # CHECK 2: Email already exists
+        if email:
+            existing_email = Employee.query.filter_by(email=email).first()
+            if existing_email:
+                flash(f"Email {email} is already registered with employee {existing_email.full_name} ({existing_email.employee_id})", "danger")
+                return redirect("/form")
+        
+        # CHECK 3: Phone already exists
+        if phone:
+            existing_phone = Employee.query.filter_by(phone=phone).first()
+            if existing_phone:
+                flash(f"Phone {phone} is already registered with employee {existing_phone.full_name} ({existing_phone.employee_id})", "danger")
+                return redirect("/form")
+        
+        # Parse skills
         skill_names = request.form.getlist("skill_name[]")
         skill_exps = request.form.getlist("skill_exp[]")
         
         skills_data = {}
         for i in range(len(skill_names)):
             skill_name = skill_names[i].strip()
-            if skill_name:  # Only add non-empty skills
+            if skill_name:
                 try:
                     skill_exp = float(skill_exps[i]) if i < len(skill_exps) and skill_exps[i] else 0
                 except (ValueError, IndexError):
                     skill_exp = 0
                 skills_data[skill_name] = skill_exp
         
-        # Parse date of birth
+        # Parse dates
         dob = None
         dob_str = request.form.get("dob")
         if dob_str:
@@ -1147,7 +1213,6 @@ def submit():
             except:
                 pass
         
-        # Parse joining date
         joining_date = None
         joining_str = request.form.get("joining_date")
         if joining_str:
@@ -1156,32 +1221,25 @@ def submit():
             except:
                 pass
         
-        # Parse total experience
-        total_exp = None  # Change default from 0.0 to None initially
+        # Parse experience
+        total_exp = 0.0
         exp_str = request.form.get("total_exp", "").strip()
         if exp_str:
             try:
                 total_exp = float(exp_str)
-                if total_exp < 0:  # Validate non-negative
+                if total_exp < 0:
                     total_exp = 0.0
             except ValueError:
-                total_exp = 0.0  # Default to 0 if invalid
-                flash("Invalid experience value, defaulting to 0", "warning")
-        else:
-            total_exp = 0.0  # Default to 0 if empty
-
-
+                total_exp = 0.0
         
         # Handle file uploads
         resume_filename = None
         profile_pic_filename = None
         
-        # Handle resume upload
         if 'resume' in request.files:
             resume_file = request.files['resume']
             if resume_file and resume_file.filename != '':
                 if allowed_file(resume_file.filename, ALLOWED_RESUME_EXT):
-                    # Create safe filename with employee_id prefix
                     original_filename = secure_filename(resume_file.filename)
                     resume_filename = f"{employee_id}_resume_{original_filename}"
                     resume_path = os.path.join(app.config['UPLOAD_FOLDER'], resume_filename)
@@ -1189,12 +1247,10 @@ def submit():
                 else:
                     flash("Invalid resume file format. Allowed: pdf, doc, docx", "warning")
         
-        # Handle profile picture upload
         if 'profile_pic' in request.files:
             pic_file = request.files['profile_pic']
             if pic_file and pic_file.filename != '':
                 if allowed_file(pic_file.filename, ALLOWED_IMAGE_EXT):
-                    # Create safe filename with employee_id prefix
                     original_filename = secure_filename(pic_file.filename)
                     profile_pic_filename = f"{employee_id}_profile_{original_filename}"
                     pic_path = os.path.join(app.config['UPLOAD_FOLDER'], profile_pic_filename)
@@ -1202,41 +1258,40 @@ def submit():
                 else:
                     flash("Invalid image file format. Allowed: png, jpg, jpeg, gif, bmp", "warning")
         
-        # Create new employee with all fields
+        # Create employee
         e = Employee(
             employee_id=employee_id,
             full_name=request.form.get("full_name", "").strip(),
-            email=request.form.get("email", "").strip(),
+            email=email,
             password=request.form.get("password"),
             dob=dob,
-            phone=request.form.get("phone", "").strip(),
+            phone=phone,
             department=request.form.get("department", "").strip(),
             job_title=request.form.get("job_title", "").strip(),
             total_exp=total_exp,
             skills=skills_data,
-            resume_path=resume_filename,  # Store just filename, not full path
-            profile_pic=profile_pic_filename,  # Store just filename, not full path
+            resume_path=resume_filename,
+            profile_pic=profile_pic_filename,
             joining_date=joining_date,
             status=request.form.get("status", "Active"),
             manager=request.form.get("manager", "").strip(),
-            performance_score=75.0  # Default performance score
+            performance_score=75.0
         )
 
-        # Add to database
         db.session.add(e)
         db.session.commit()
         
         sync_employee_to_vector_db(e.employee_id)
         
-        flash(f" Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
+        flash(f"✅ Employee {e.full_name} (ID: {employee_id}) added successfully!", "success")
         return redirect("/employees")
         
     except Exception as ex:
         db.session.rollback()
         flash(f"❌ Error adding employee: {str(ex)}", "danger")
-        print(f"ERROR in /submit: {str(ex)}")  # Debug in console
+        print(f"ERROR in /submit: {str(ex)}")
         import traceback
-        traceback.print_exc()  # Full error trace
+        traceback.print_exc()
         return redirect("/form")
     
 @app.route("/employees")
@@ -1326,7 +1381,6 @@ def delete_employee(emp_id):
 
 @app.route("/edit_employee/<int:emp_id>", methods=["GET", "POST"])
 def edit_employee(emp_id):
-    """Edit employee details"""
     if "user" not in session:
         return redirect("/login")
     
@@ -1334,38 +1388,47 @@ def edit_employee(emp_id):
     
     if request.method == "POST":
         try:
-            # Update employee fields
+            email = request.form.get("email", "").strip()
+            phone = request.form.get("phone", "").strip()
+            
+            # CHECK 1: Email already exists (exclude current employee)
+            if email and email != employee.email:
+                existing_email = Employee.query.filter_by(email=email).first()
+                if existing_email:
+                    flash(f"Email {email} is already registered with employee {existing_email.full_name} ({existing_email.employee_id})", "danger")
+                    return redirect(url_for('edit_employee', emp_id=emp_id))
+            
+            # CHECK 2: Phone already exists (exclude current employee)
+            if phone and phone != employee.phone:
+                existing_phone = Employee.query.filter_by(phone=phone).first()
+                if existing_phone:
+                    flash(f"Phone {phone} is already registered with employee {existing_phone.full_name} ({existing_phone.employee_id})", "danger")
+                    return redirect(url_for('edit_employee', emp_id=emp_id))
+            
+            # Update fields
             employee.full_name = request.form.get("full_name", employee.full_name)
-            employee.email = request.form.get("email", employee.email)
+            employee.email = email
+            employee.phone = phone
             employee.department = request.form.get("department", employee.department)
             employee.job_title = request.form.get("job_title", employee.job_title)
-            employee.phone = request.form.get("phone", employee.phone)
             employee.manager = request.form.get("manager", employee.manager)
             employee.status = request.form.get("status", employee.status)
             
-            # Update total experience
             total_exp = request.form.get("total_exp")
             if total_exp:
                 employee.total_exp = float(total_exp)
             
-            # Update skills if provided (expects JSON format)
-            skills_input = request.form.get("skills")
-            if skills_input:
-                import json
-                try:
-                    employee.skills = json.loads(skills_input)
-                except json.JSONDecodeError:
-                    flash("Invalid skills format. Use JSON format.", "warning")
-            
             db.session.commit()
-            flash(f"Employee {employee.full_name} updated successfully", "success")
+            
+            sync_employee_to_vector_db(employee.employee_id)
+            
+            flash(f"✅ Employee {employee.full_name} updated successfully", "success")
             return redirect("/employees")
             
         except Exception as e:
             db.session.rollback()
-            flash(f"Error updating employee: {str(e)}", "danger")
+            flash(f"❌ Error updating employee: {str(e)}", "danger")
     
-    # GET request - render edit form
     return render_template("edit_employee.html", employee=employee)
 
 @app.route("/employee/<string:employee_id>/unassign/<int:project_id>", methods=["POST"])
