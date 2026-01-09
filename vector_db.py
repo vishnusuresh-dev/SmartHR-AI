@@ -104,7 +104,7 @@ def load_all_csv(folder_path):
 # 2. LOAD RESUME FILES
 # -----------------------------------------------------------
 def load_all_resumes(folder_path):
-    """Load all resume files with ENRICHED METADATA from database"""
+    """Load all resume files with ENRICHED METADATA including project context"""
     documents = []
     
     if not os.path.exists(folder_path):
@@ -119,11 +119,8 @@ def load_all_resumes(folder_path):
     all_resume_files = pdf_files + doc_files + docx_files
     
     print(f"\nFound {len(all_resume_files)} resume files")
-    print(f"  - PDFs: {len(pdf_files)}")
-    print(f"  - DOCs: {len(doc_files)}")
-    print(f"  - DOCXs: {len(docx_files)}")
     
-    with app.app_context():  # Use Flask context to query database
+    with app.app_context():
         for file_path in all_resume_files:
             try:
                 filename = os.path.basename(file_path)
@@ -131,7 +128,7 @@ def load_all_resumes(folder_path):
                 
                 print(f"Loading resume: {filename} (Employee: {employee_id})")
                 
-                # 🔥 GET EMPLOYEE DATA FROM DATABASE
+                # Get employee data from database
                 emp = Employee.query.filter_by(employee_id=employee_id).first()
                 
                 # Get performance metric
@@ -143,12 +140,37 @@ def load_all_resumes(folder_path):
                         month=current_month
                     ).first()
                 
-                # Get project count
+                # Get project memberships and tech stacks
+                project_info_text = ""
                 project_count = 0
+                all_project_techs = set()
+                
                 if emp:
-                    project_count = ProjectMember.query.filter_by(
-                        employee_id=employee_id
-                    ).count()
+                    memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+                    project_count = len(memberships)
+                    
+                    if memberships:
+                        project_info_text = "\n\nCURRENT PROJECTS AND EXPERIENCE:\n"
+                        for pm in memberships:
+                            proj = Project.query.get(pm.project_id)
+                            if proj:
+                                # Get project tech stack from team
+                                members = ProjectMember.query.filter_by(project_id=proj.id).all()
+                                project_techs = set()
+                                for member in members:
+                                    member_emp = Employee.query.filter_by(employee_id=member.employee_id).first()
+                                    if member_emp and member_emp.skills:
+                                        project_techs.update(member_emp.skills.keys())
+                                
+                                all_project_techs.update(project_techs)
+                                
+                                project_info_text += f"""
+- Project: {proj.name} ({proj.project_code})
+  Role: {pm.role}
+  Status: {proj.status}
+  Description: {proj.description or 'N/A'}
+  Technologies Used: {', '.join(list(project_techs)[:10]) if project_techs else 'N/A'}
+"""
                 
                 # Base metadata
                 base_metadata = {
@@ -159,95 +181,73 @@ def load_all_resumes(folder_path):
                     "filename": filename
                 }
                 
-                # 🔥 ENRICHED METADATA FROM DATABASE
+                # Enriched metadata
                 if emp:
                     top_skills = extract_top_skills(emp, limit=5)
                     
                     enriched_metadata = {
-                        # Identity
                         "full_name": str(emp.full_name),
                         "email": str(emp.email),
-                        
-                        # Role
                         "department": str(emp.department or "Unassigned"),
                         "job_title": str(emp.job_title or "Not specified"),
-                        
-                        # Performance
                         "performance_score": float(emp.performance_score or 75.0),
                         "performance_range": str(get_performance_range(emp.performance_score)),
-                        
-                        # Experience
                         "total_exp": float(emp.total_exp or 0),
                         "experience_level": str(get_experience_level(emp.total_exp)),
-                        
-                        # Skills
                         "skill_count": len(emp.skills) if emp.skills else 0,
                         "top_skill_1": str(top_skills[0]) if len(top_skills) > 0 else "",
                         "top_skill_2": str(top_skills[1]) if len(top_skills) > 1 else "",
                         "top_skill_3": str(top_skills[2]) if len(top_skills) > 2 else "",
-                        
-                        # Projects
                         "active_projects": int(project_count),
                         "available_for_projects": bool(is_available_for_projects(employee_id)),
-                        
-                        # Status
                         "status": str(emp.status or "Active"),
-                        
-                        # Profile
                         "has_resume": True,
                         "has_profile_pic": bool(emp.profile_pic),
+                        "project_technologies": ",".join(list(all_project_techs)[:15])  # Store project techs
                     }
                     
-                    # Add performance metrics if available
                     if metric:
                         enriched_metadata.update({
                             "attendance_score": float(metric.attendance_score),
                             "task_completion_score": float(metric.task_completion_score),
                             "quality_score": float(metric.quality_score),
-                            "punctuality_score": float(metric.punctuality_score),
-                            "collaboration_score": float(metric.collaboration_score),
-                            "productivity_score": float(metric.productivity_score),
-                            "days_present": int(metric.days_present),
-                            "days_total": int(metric.days_total),
-                            "tasks_completed": int(metric.tasks_completed),
-                            "tasks_assigned": int(metric.tasks_assigned),
                         })
                     
-                    # Merge enriched metadata with base
                     base_metadata.update(enriched_metadata)
                     print(f"  ✓ Added {len(enriched_metadata)} metadata fields from database")
                 else:
-                    print(f"  ⚠️  Employee {employee_id} not found in database, using basic metadata")
+                    print(f"  ⚠️  Employee {employee_id} not found in database")
                 
-                # Load resume content based on file type
+                # Load resume content
+                resume_text = ""
                 if file_path.endswith('.pdf'):
                     loader = PyPDFLoader(file_path)
                     pages = loader.load()
-                    combined_text = "\n\n".join([page.page_content for page in pages])
-                    doc = Document(
-                        page_content=combined_text,
-                        metadata=base_metadata  # 🔥 WITH ENRICHED METADATA
-                    )
-                    documents.append(doc)
+                    resume_text = "\n\n".join([page.page_content for page in pages])
                     
                 elif file_path.endswith('.docx'):
                     loader = Docx2txtLoader(file_path)
                     docs = loader.load()
-                    for doc in docs:
-                        doc.metadata = base_metadata  # 🔥 WITH ENRICHED METADATA
-                    documents.extend(docs)
+                    resume_text = "\n\n".join([doc.page_content for doc in docs])
                     
                 elif file_path.endswith('.doc'):
                     try:
                         loader = UnstructuredWordDocumentLoader(file_path)
                         docs = loader.load()
-                        for doc in docs:
-                            doc.metadata = base_metadata  # 🔥 WITH ENRICHED METADATA
-                        documents.extend(docs)
+                        resume_text = "\n\n".join([doc.page_content for doc in docs])
                     except Exception as e:
-                        print(f"  ⚠️  Warning: Could not load .doc file {filename}: {e}")
+                        print(f"  ⚠️  Warning: Could not load .doc file: {e}")
                 
-                print(f"  ✓ Successfully loaded resume for {employee_id}")
+                # Combine resume with project context
+                full_text = resume_text + project_info_text
+                
+                doc = Document(
+                    page_content=full_text,
+                    metadata=base_metadata
+                )
+                documents.append(doc)
+                
+                print(f"  ✓ Successfully loaded resume with project context for {employee_id}")
                 
             except Exception as e:
                 print(f"  ✗ Error loading resume {filename}: {e}")
@@ -257,7 +257,6 @@ def load_all_resumes(folder_path):
     
     print(f"\nTotal resume documents loaded: {len(documents)}")
     return documents
-
 
 # -----------------------------------------------------------
 # 3. NEW: LOAD PERFORMANCE METRICS FROM DATABASE
