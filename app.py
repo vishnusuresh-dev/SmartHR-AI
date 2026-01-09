@@ -1567,7 +1567,7 @@ def projects():
         assigned_members_query = ProjectMember.query.filter_by(project_id=project.id).all()
         assigned_employee_ids = [m.employee_id for m in assigned_members_query]
         
-        # Get full employee details for assigned members
+        # Get full employee details for assigned members WITH ROLE
         assigned_members = []
         for member in assigned_members_query:
             emp = Employee.query.filter_by(employee_id=member.employee_id).first()
@@ -1575,7 +1575,7 @@ def projects():
                 assigned_members.append({
                     "employee_id": emp.employee_id,
                     "full_name": emp.full_name,
-                    "role": member.role
+                    "role": member.role  # ← USE THE ROLE FROM ProjectMember TABLE
                 })
         
         # Get available (unassigned) employees
@@ -1595,7 +1595,6 @@ def projects():
         })
     
     return render_template("projects.html", projects=projects_data)
-
 
 @app.route("/projects/create", methods=["POST"])
 def create_project():
@@ -1649,20 +1648,22 @@ def assign_members(project_id):
         ).first()
         
         if not existing:
+            # Get the role from hidden input field
+            role_value = request.form.get(f"employee_role_{emp_id}", "Developer")
+            
             db.session.add(ProjectMember(
                 project_id=project_id,
                 employee_id=emp_id,
-                role="Developer"
+                role=role_value
             ))
         else:
             flash(f"Employee {emp_id} is already assigned to this project", "warning")
 
     db.session.commit()
     
-    # 🔥 RE-SYNC PROJECT (updated team composition)
+    # Sync to vector DB
     sync_project_to_vector_db(project_id)
     
-    # 🔥 RE-SYNC ALL ASSIGNED EMPLOYEES (updated project count)
     for emp_id in employee_ids:
         sync_employee_to_vector_db(emp_id)
     
@@ -2263,6 +2264,293 @@ PERFORMANCE REVIEW:"""
         }), 500
         
 # ======================================================
+# SMART HELPER FUNCTIONS
+# ======================================================
+def extract_project_tech_requirements_enhanced(project):
+    """
+    Enhanced tech extraction with explicit parsing + LLM backup
+    """
+    required_techs = set()
+    
+    # Define comprehensive tech keyword database
+    tech_keywords = {
+        # Frontend
+        'react', 'next.js', 'nextjs', 'vue', 'angular', 'redux', 'material-ui', 'mui',
+        'typescript', 'javascript', 'html', 'css', 'tailwind', 'sass',
+        
+        # Backend
+        'node.js', 'nodejs', 'express', 'fastapi', 'django', 'flask', 'spring boot',
+        'java', 'python', 'go', 'rust', 'php', 'ruby', 'c#',
+        
+        # Databases
+        'mongodb', 'postgresql', 'postgres', 'mysql', 'redis', 'cassandra',
+        'dynamodb', 'elasticsearch', 'oracle', 'sql server',
+        
+        # DevOps/Cloud
+        'docker', 'kubernetes', 'k8s', 'aws', 'azure', 'gcp', 'terraform',
+        'jenkins', 'gitlab ci', 'github actions', 'prometheus', 'grafana',
+        
+        # Messaging/Queue
+        'rabbitmq', 'kafka', 'redis pub/sub', 'amazon sqs',
+        
+        # Payments
+        'stripe', 'paypal', 'square', 'braintree',
+        
+        # Search
+        'elasticsearch', 'algolia', 'solr',
+        
+        # Architecture
+        'microservices', 'rest api', 'graphql', 'grpc', 'serverless'
+    }
+    
+    # Step 1: Direct keyword extraction
+    project_text = f"{project.name} {project.description or ''}".lower()
+    
+    for tech in tech_keywords:
+        if tech in project_text:
+            required_techs.add(tech)
+    
+    # Step 2: LLM extraction for missing items (as backup)
+    if len(required_techs) < 3:
+        try:
+            llm = ChatOllama(model=LLM_MODEL, temperature=0.1)
+            
+            prompt = f"""List technical skills required for this project as comma-separated values.
+
+Project: {project.name}
+Description: {project.description or 'No description'}
+
+Focus on: programming languages, frameworks, databases, cloud services, tools.
+Return ONLY skill names, nothing else.
+
+Technologies:"""
+            
+            response = llm.invoke(prompt)
+            llm_techs = [t.strip().lower() for t in response.content.split(',')]
+            required_techs.update(llm_techs)
+            
+        except Exception as e:
+            print(f"  ⚠️ LLM extraction failed: {e}")
+    
+    print(f"  📋 Extracted {len(required_techs)} technologies: {list(required_techs)[:10]}")
+    return list(required_techs)
+
+
+def calculate_weighted_skill_match(employee, required_techs):
+    """
+    Calculate skill match with category weighting
+    Returns: (score out of 60, breakdown dict)
+    """
+    
+    # Categorize required technologies
+    categories = {
+        'critical': [],      # Core tech (40 pts) - must-have skills
+        'important': [],     # Supporting tech (15 pts)
+        'nice_to_have': []   # Bonus tech (5 pts)
+    }
+    
+    # Define critical technologies for different project types
+    frontend_critical = {'react', 'next.js', 'nextjs', 'vue', 'angular', 'javascript', 'typescript'}
+    backend_critical = {'node.js', 'python', 'java', 'fastapi', 'express', 'spring boot', 'django'}
+    database_critical = {'mongodb', 'postgresql', 'mysql', 'redis', 'elasticsearch'}
+    devops_critical = {'docker', 'kubernetes', 'aws', 'azure', 'gcp'}
+    
+    # Categorize each required tech
+    for tech in required_techs:
+        if tech in frontend_critical or tech in backend_critical:
+            categories['critical'].append(tech)
+        elif tech in database_critical or tech in devops_critical:
+            categories['important'].append(tech)
+        else:
+            categories['nice_to_have'].append(tech)
+    
+    # Get employee skills (normalized)
+    employee_skills = set()
+    if employee.skills:
+        employee_skills = {skill.lower() for skill in employee.skills.keys()}
+    
+    # Calculate matches in each category
+    critical_matches = 0
+    important_matches = 0
+    bonus_matches = 0
+    
+    for tech in categories['critical']:
+        if any(tech in skill or skill in tech for skill in employee_skills):
+            critical_matches += 1
+    
+    for tech in categories['important']:
+        if any(tech in skill or skill in tech for skill in employee_skills):
+            important_matches += 1
+    
+    for tech in categories['nice_to_have']:
+        if any(tech in skill or skill in tech for skill in employee_skills):
+            bonus_matches += 1
+    
+    # Calculate weighted score
+    score = 0
+    
+    # Critical skills: 40 points
+    if len(categories['critical']) > 0:
+        critical_score = (critical_matches / len(categories['critical'])) * 40
+        score += critical_score
+    else:
+        score += 20  # Default if no critical skills identified
+    
+    # Important skills: 15 points
+    if len(categories['important']) > 0:
+        important_score = (important_matches / len(categories['important'])) * 15
+        score += important_score
+    else:
+        score += 7.5  # Default
+    
+    # Bonus skills: 5 points
+    if len(categories['nice_to_have']) > 0:
+        bonus_score = (bonus_matches / len(categories['nice_to_have'])) * 5
+        score += bonus_score
+    
+    breakdown = {
+        'critical': {
+            'matches': critical_matches,
+            'total': len(categories['critical']),
+            'score': round(score if len(categories['critical']) > 0 else 20, 1)
+        },
+        'important': {
+            'matches': important_matches,
+            'total': len(categories['important']),
+            'score': round(important_score if len(categories['important']) > 0 else 7.5, 1)
+        },
+        'bonus': {
+            'matches': bonus_matches,
+            'total': len(categories['nice_to_have']),
+            'score': round(bonus_score if len(categories['nice_to_have']) > 0 else 0, 1)
+        }
+    }
+    
+    print(f"      💎 Critical: {critical_matches}/{len(categories['critical'])}")
+    print(f"      ⭐ Important: {important_matches}/{len(categories['important'])}")
+    print(f"      ✨ Bonus: {bonus_matches}/{len(categories['nice_to_have'])}")
+    print(f"      📊 Total Skill Score: {round(score, 1)}/60")
+    
+    return round(score, 1), breakdown
+
+
+def enforce_strict_role_matching(employee, project, base_score):
+    """
+    Apply strict penalties for role mismatches
+    """
+    
+    # Define role compatibility matrix
+    development_roles = {
+        'developer', 'engineer', 'full stack', 'backend', 'frontend',
+        'software engineer', 'programmer', 'architect'
+    }
+    
+    non_development_roles = {
+        'qa', 'tester', 'quality assurance', 'test engineer',
+        'network', 'network engineer', 'system admin', 'sysadmin',
+        'support', 'help desk', 'analyst', 'business analyst'
+    }
+    
+    # Check if project is development-focused
+    project_text = f"{project.name} {project.description or ''}".lower()
+    is_dev_project = any(keyword in project_text for keyword in [
+        'development', 'software', 'application', 'platform', 'system',
+        'backend', 'frontend', 'full stack', 'microservice', 'api'
+    ])
+    
+    if is_dev_project:
+        employee_role = (employee.job_title or '').lower()
+        
+        # Check if employee is in non-dev role
+        if any(role in employee_role for role in non_development_roles):
+            # Apply severe penalty (50% reduction)
+            penalty = base_score * 0.5
+            final_score = base_score - penalty
+            
+            print(f"      ⚠️ ROLE MISMATCH: {employee.job_title} not suitable for dev project")
+            print(f"      ⬇️ Score reduced by 50%: {base_score} → {final_score}")
+            
+            return final_score, "role_mismatch_penalty"
+        
+        # Check if employee is in dev role
+        elif any(role in employee_role for role in development_roles):
+            print(f"      ✅ ROLE MATCH: {employee.job_title} suitable for dev project")
+            return base_score, "role_match"
+    
+    return base_score, "neutral"
+
+
+def filter_candidates_strictly(matches, min_score_threshold=50):
+    """
+    Apply strict filtering to remove clearly unsuitable candidates
+    """
+    filtered = []
+    
+    for match in matches:
+        # Rule 1: Minimum score threshold
+        if match['match_score'] < min_score_threshold:
+            print(f"    ⛔ FILTERED: {match['full_name']} - Score too low ({match['match_score']})")
+            continue
+        
+        # Rule 2: Check skill match breakdown
+        if '_skill_breakdown' in match:
+            critical_matches = match['_skill_breakdown']['critical']['matches']
+            critical_total = match['_skill_breakdown']['critical']['total']
+            
+            # Must have at least 30% of critical skills
+            if critical_total > 0:
+                critical_ratio = critical_matches / critical_total
+                if critical_ratio < 0.3:
+                    print(f"    ⛔ FILTERED: {match['full_name']} - Insufficient critical skills ({critical_ratio*100:.0f}%)")
+                    continue
+        
+        filtered.append(match)
+    
+    return filtered
+
+
+
+
+
+
+def get_employee_project_technologies(employee_id):
+    """
+    Get technologies employee is currently working with in their projects
+    Returns: Set of technologies
+    """
+    try:
+        techs = set()
+        
+        # Get projects employee is assigned to
+        memberships = ProjectMember.query.filter_by(employee_id=employee_id).all()
+        
+        for membership in memberships:
+            project = Project.query.get(membership.project_id)
+            if project and project.description:
+                # Simple keyword extraction from project description
+                desc_lower = project.description.lower()
+                
+                # Common tech keywords to check
+                tech_keywords = [
+                    'python', 'java', 'javascript', 'react', 'angular', 'vue', 
+                    'node', 'django', 'flask', 'spring', 'docker', 'kubernetes',
+                    'aws', 'azure', 'gcp', 'postgresql', 'mongodb', 'mysql',
+                    'machine learning', 'ml', 'ai', 'deep learning', 'nlp',
+                    'rest api', 'graphql', 'microservices', 'devops', 'ci/cd'
+                ]
+                
+                for keyword in tech_keywords:
+                    if keyword in desc_lower:
+                        techs.add(keyword)
+        
+        return techs
+        
+    except Exception as e:
+        print(f"  ⚠️  Error getting project technologies: {e}")
+        return set()
+
+
+# ======================================================
 # SMART MATCHING ROUTES (PROJECT-BASED MATCHING)
 # ======================================================
 @app.route("/smart-matching")
@@ -2308,11 +2596,11 @@ def get_projects_for_matching():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
 @app.route("/api/smart-matching/find-matches", methods=["POST"])
-def find_project_matches_semantic():
+def find_project_matches_enhanced():
     """
-    Find best matching employees using REAL semantic search + live metrics
-    NO AI HALLUCINATION - 100% deterministic
+    ENHANCED: Skills-first matching with strict filtering and weighted scoring
     """
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
@@ -2324,149 +2612,153 @@ def find_project_matches_semantic():
         if not project_code:
             return jsonify({"success": False, "error": "Project code required"}), 400
         
-        print(f"\n🎯 SEMANTIC MATCHING for project: {project_code}")
+        print(f"\n🎯 ENHANCED MATCHING for project: {project_code}")
         
         # Get project details
         project = Project.query.filter_by(project_code=project_code).first()
         if not project:
             return jsonify({"success": False, "error": "Project not found"}), 404
         
-        # Get already assigned members to exclude them
+        # Get already assigned members
         assigned_members = ProjectMember.query.filter_by(project_id=project.id).all()
         assigned_employee_ids = {m.employee_id for m in assigned_members}
         
         print(f"  📋 Project: {project.name}")
-        print(f"  📝 Description: {project.description or 'No description'}")
-        print(f"  👥 Already assigned: {len(assigned_employee_ids)} employees")
+        print(f"  👥 Already assigned: {len(assigned_employee_ids)} employees\n")
         
         # ==============================================================
-        # STEP 1: SEMANTIC SEARCH using Vector Embeddings
+        # STEP 1: Enhanced tech extraction
         # ==============================================================
-        print(f"\n  🔍 STEP 1: Semantic Search in Vector DB...")
+        print(f"  🔍 STEP 1: Extracting project tech requirements...")
+        required_techs = extract_project_tech_requirements_enhanced(project)
         
-        # Build search query from project requirements
-        search_query = f"""
-        Project: {project.name}
-        Description: {project.description or ''}
-        Required skills and experience for this project
-        """
-        
-        # Initialize embeddings
-        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
-        vectordb = Chroma(
-            persist_directory=CHROMA_DIR,
-            embedding_function=embeddings
-        )
-        
-        # Perform semantic search - get candidates with similarity scores
-        search_results = vectordb.similarity_search_with_score(
-            search_query,
-            k=50,  # Get top 50 candidates
-            filter={"document_type": {"$in": ["resume", "performance_metrics"]}}
-        )
-        
-        print(f"  ✅ Found {len(search_results)} semantic matches")
-        
-        # Extract employee IDs with their semantic similarity scores
-        employee_semantic_scores = {}
-        for doc, similarity_score in search_results:
-            emp_id = doc.metadata.get('employee_id')
-            if emp_id and emp_id not in assigned_employee_ids:
-                # ChromaDB returns distance (lower is better), convert to similarity score
-                # Distance typically ranges 0-2, we convert to 0-100 scale
-                semantic_score = max(0, 100 * (1 - similarity_score / 2))
-                
-                # Keep highest score if employee appears multiple times
-                if emp_id not in employee_semantic_scores:
-                    employee_semantic_scores[emp_id] = semantic_score
-                else:
-                    employee_semantic_scores[emp_id] = max(
-                        employee_semantic_scores[emp_id], 
-                        semantic_score
-                    )
-        
-        print(f"  📊 Unique candidates after filtering: {len(employee_semantic_scores)}")
+        if not required_techs:
+            print(f"  ⚠️  No tech requirements extracted")
         
         # ==============================================================
-        # STEP 2: COMBINE WITH LIVE DATABASE METRICS
+        # STEP 2: Get all available employees
         # ==============================================================
-        print(f"\n  📊 STEP 2: Combining with live database metrics...")
+        print(f"\n  📊 STEP 2: Analyzing all employees...")
         
         current_month = datetime.utcnow().strftime("%Y-%m")
+        all_employees = Employee.query.all()
+        
         matches = []
         
-        for emp_id, semantic_score in employee_semantic_scores.items():
-            emp = Employee.query.filter_by(employee_id=emp_id).first()
-            if not emp:
+        for emp in all_employees:
+            # Skip already assigned
+            if emp.employee_id in assigned_employee_ids:
                 continue
+            
+            print(f"\n  👤 Evaluating: {emp.full_name} ({emp.job_title})")
             
             # Get performance metric
             metric = PerformanceMetric.query.filter_by(
-                employee_id=emp_id,
+                employee_id=emp.employee_id,
                 month=current_month
             ).first()
             
             # Get project count
             project_count = ProjectMember.query.filter_by(
-                employee_id=emp_id
+                employee_id=emp.employee_id
             ).count()
             
             # ==============================================================
-            # CALCULATE FINAL MATCH SCORE (100% Deterministic)
+            # STEP 3: Calculate weighted skill match (60 points)
             # ==============================================================
-            final_score = calculate_match_score_deterministic(
-                emp=emp,
-                project=project,
-                metric=metric,
-                semantic_score=semantic_score,
-                project_count=project_count
-            )
+            skill_score, skill_breakdown = calculate_weighted_skill_match(emp, required_techs)
             
-            # Only include if score is reasonable (>30%)
-            if final_score >= 30:
-                top_skills = extract_top_skills(emp, limit=5)
-                
-                matches.append({
-                    "employee_id": emp.employee_id,
-                    "full_name": emp.full_name,
-                    "email": emp.email,
-                    "department": emp.department,
-                    "job_title": emp.job_title,
-                    "performance_score": float(emp.performance_score or 75.0),
-                    "total_exp": float(emp.total_exp or 0),
-                    "top_skills": top_skills,
-                    "active_projects": project_count,
-                    "available_for_projects": is_available_for_projects(emp_id),
-                    "match_score": final_score,
-                    "semantic_score": round(semantic_score, 1),  # For debugging
-                    # Detailed breakdown for explanation
-                    "_breakdown": {
-                        "semantic": round(semantic_score, 1),
-                        "performance": round((emp.performance_score or 75.0) * 0.25, 1),
-                        "availability": 10 if is_available_for_projects(emp_id) else 0,
-                        "experience": min((emp.total_exp or 0) * 3, 15)
-                    }
-                })
+            # ==============================================================
+            # STEP 4: Calculate other factors (40 points)
+            # ==============================================================
+            total_score = skill_score
+            
+            # Performance (20 points)
+            if emp.performance_score:
+                perf_points = (emp.performance_score / 100) * 20
+                total_score += perf_points
+                print(f"      Performance: {emp.performance_score}/100 → {perf_points:.1f} pts")
+            else:
+                total_score += 15
+                print(f"      Performance: Default 75% → 15.0 pts")
+            
+            # Experience (10 points)
+            if emp.total_exp:
+                exp_points = min(emp.total_exp * 2, 10)
+                total_score += exp_points
+                print(f"      Experience: {emp.total_exp} years → {exp_points:.1f} pts")
+            
+            # Availability (10 points)
+            if is_available_for_projects(emp.employee_id, max_projects=3):
+                total_score += 10
+                print(f"      Availability: Available → 10.0 pts")
+            elif project_count < 5:
+                total_score += 5
+                print(f"      Availability: Partial → 5.0 pts")
+            else:
+                print(f"      Availability: Busy → 0.0 pts")
+            
+            # ==============================================================
+            # STEP 5: Apply strict role matching penalty
+            # ==============================================================
+            final_score, role_status = enforce_strict_role_matching(emp, project, total_score)
+            
+            print(f"      ✅ FINAL SCORE: {final_score}/100\n")
+            
+            # Build match object
+            top_skills = extract_top_skills(emp, limit=5)
+            
+            matches.append({
+                "employee_id": emp.employee_id,
+                "full_name": emp.full_name,
+                "email": emp.email,
+                "department": emp.department,
+                "job_title": emp.job_title,
+                "performance_score": float(emp.performance_score or 75.0),
+                "total_exp": float(emp.total_exp or 0),
+                "top_skills": top_skills,
+                "active_projects": project_count,
+                "available_for_projects": is_available_for_projects(emp.employee_id),
+                "match_score": final_score,
+                "role_status": role_status,
+                # Internal data for filtering
+                "_skill_breakdown": skill_breakdown,
+                "_required_techs": required_techs
+            })
         
-        # Sort by final match score
-        matches.sort(key=lambda x: x['match_score'], reverse=True)
+        # ==============================================================
+        # STEP 6: Apply strict filtering
+        # ==============================================================
+        print(f"\n  🔧 STEP 3: Applying strict candidate filtering...")
+        print(f"  Before filtering: {len(matches)} candidates")
         
-        # Limit to top 15 matches
-        matches = matches[:15]
+        filtered_matches = filter_candidates_strictly(matches, min_score_threshold=50)
         
-        print(f"\n  ✅ Returning {len(matches)} best matches")
-        print(f"  🏆 Top match: {matches[0]['full_name']} ({matches[0]['match_score']}%)" if matches else "  ⚠️  No matches found")
+        print(f"  After filtering: {len(filtered_matches)} candidates\n")
+        
+        # Sort by match score (highest first)
+        filtered_matches.sort(key=lambda x: x['match_score'], reverse=True)
+        
+        # Limit to top 15
+        filtered_matches = filtered_matches[:15]
+        
+        print(f"  ✅ Returning top {len(filtered_matches)} matches")
+        if filtered_matches:
+            print(f"  🏆 Top match: {filtered_matches[0]['full_name']} ({filtered_matches[0]['match_score']}%)")
         
         return jsonify({
             "success": True,
-            "matches": matches,
+            "matches": filtered_matches,
             "project_code": project_code,
             "project_name": project.name,
-            "method": "semantic_search_plus_metrics"
+            "required_technologies": required_techs,
+            "method": "enhanced_weighted_matching",
+            "total_candidates_analyzed": len(matches),
+            "candidates_after_filtering": len(filtered_matches)
         }), 200
         
     except Exception as e:
-        print(f"❌ Error in semantic matching: {e}")
+        print(f"❌ Error in enhanced matching: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -2475,56 +2767,12 @@ def find_project_matches_semantic():
         }), 500
 
 
-def calculate_match_score_deterministic(emp, project, metric, semantic_score, project_count):
-    """
-    Calculate match score using ONLY real data - NO AI randomness
-    
-    Scoring breakdown:
-    - Semantic similarity: 40 points (from vector search)
-    - Performance: 25 points (from database)
-    - Experience: 15 points (from database)
-    - Availability: 10 points (from project count)
-    - Metrics bonus: 10 points (from performance metrics)
-    
-    Total: 100 points
-    """
-    score = 0
-    
-    # 1. Semantic Similarity (40 points) - from vector search
-    score += (semantic_score / 100) * 40
-    
-    # 2. Performance Score (25 points) - from database
-    if emp.performance_score:
-        score += (emp.performance_score / 100) * 25
-    else:
-        score += 18.75  # Default 75% performance = 18.75 points
-    
-    # 3. Experience (15 points) - from database
-    if emp.total_exp:
-        exp_score = min(emp.total_exp * 3, 15)
-        score += exp_score
-    
-    # 4. Availability (10 points) - from project count
-    if is_available_for_projects(emp.employee_id, max_projects=3):
-        score += 10
-    elif project_count < 5:  # Partially available
-        score += 5
-    
-    # 5. Metrics Bonus (10 points) - from performance metrics
-    if metric:
-        avg_metric = (
-            metric.task_completion_score + 
-            metric.quality_score + 
-            metric.collaboration_score
-        ) / 3
-        score += (avg_metric / 100) * 10
-    
-    return round(min(score, 100), 1)
-
 
 @app.route("/api/smart-matching/explain", methods=["POST"])
-def explain_match_deterministic():
-    """Generate detailed narrative explanation based on REAL data"""
+def explain_match_enhanced():
+    """
+    ENHANCED: Generate detailed explanation based on weighted scoring
+    """
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
@@ -2539,7 +2787,10 @@ def explain_match_deterministic():
         if not project or not employee:
             return jsonify({"success": False, "error": "Not found"}), 404
         
-        # Get real data
+        # Re-calculate match score with detailed breakdown
+        required_techs = extract_project_tech_requirements_enhanced(project)
+        skill_score, skill_breakdown = calculate_weighted_skill_match(employee, required_techs)
+        
         current_month = datetime.utcnow().strftime("%Y-%m")
         metric = PerformanceMetric.query.filter_by(
             employee_id=employee_id,
@@ -2550,115 +2801,123 @@ def explain_match_deterministic():
             employee_id=employee_id
         ).count()
         
-        # Get semantic match score
-        search_query = f"Project: {project.name} Description: {project.description or ''}"
+        # Calculate component scores
+        perf_score = (employee.performance_score / 100) * 20 if employee.performance_score else 15
+        exp_score = min((employee.total_exp or 0) * 2, 10)
+        avail_score = 10 if is_available_for_projects(employee_id) else (5 if project_count < 5 else 0)
         
-        embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
-        vectordb = Chroma(
-            persist_directory=CHROMA_DIR,
-            embedding_function=embeddings
-        )
+        base_score = skill_score + perf_score + exp_score + avail_score
+        final_score, role_status = enforce_strict_role_matching(employee, project, base_score)
         
-        # Find this specific employee's documents
-        search_results = vectordb.similarity_search_with_score(
-            search_query,
-            k=50,
-            filter={"employee_id": employee_id}
-        )
-        
-        semantic_score = 0
-        if search_results:
-            _, distance = search_results[0]
-            semantic_score = max(0, 100 * (1 - distance / 2))
-        
-        # Calculate final score
-        final_score = calculate_match_score_deterministic(
-            emp=employee,
-            project=project,
-            metric=metric,
-            semantic_score=semantic_score,
-            project_count=project_count
-        )
-        
-        # Build narrative explanation
-        top_skills = extract_top_skills(employee, limit=5)
-        
-        explanation = f"""**{employee.full_name}** is {'an excellent' if final_score >= 80 else 'a strong' if final_score >= 60 else 'a suitable'} match for **{project.name}** based on their comprehensive skill set and professional background.
+        # Build detailed explanation
+        explanation = f"""**{employee.full_name}** - Match Score: {final_score}/100
 
-**Technical Expertise:**
-{employee.full_name} brings {', '.join(top_skills[:3]) if len(top_skills) >= 3 else 'relevant technical skills'} to the table"""
+## 🎯 Matching Analysis
+
+"""
         
-        if employee.total_exp and employee.total_exp >= 5:
-            explanation += f", backed by {employee.total_exp} years of industry experience. This senior-level expertise means they can handle complex technical challenges and mentor junior team members."
-        elif employee.total_exp and employee.total_exp >= 2:
-            explanation += f" with {employee.total_exp} years of hands-on experience. Their mid-level expertise provides a solid foundation for contributing effectively to the project."
-        else:
-            explanation += f". While relatively early in their career, they demonstrate strong potential and eagerness to learn."
+        # Critical Skills Section
+        crit = skill_breakdown['critical']
+        imp = skill_breakdown['important']
+        bonus = skill_breakdown['bonus']
         
-        # Skill alignment
-        if semantic_score >= 70:
-            explanation += f"\n\nTheir skill profile shows exceptional alignment with the project requirements. "
-            if 'python' in [s.lower() for s in top_skills]:
-                explanation += "Python expertise is particularly valuable for this project's technical stack. "
-            if len(top_skills) >= 4:
-                explanation += f"Additionally, their proficiency in {', '.join(top_skills[3:5]) if len(top_skills) > 3 else 'complementary technologies'} adds versatility to their contribution."
-        elif semantic_score >= 50:
-            explanation += f"\n\nTheir technical background aligns well with the project's needs. "
-            if top_skills:
-                explanation += f"Skills like {top_skills[0]} are directly relevant, "
-                if len(top_skills) > 1:
-                    explanation += f"and experience with {', '.join(top_skills[1:3])} provides additional value."
+        if crit['matches'] > 0:
+            crit_ratio = (crit['matches'] / crit['total']) * 100 if crit['total'] > 0 else 0
+            explanation += f"""**💎 Critical Skills** ({crit['score']}/40 points)
+- Matches: {crit['matches']}/{crit['total']} ({crit_ratio:.0f}%)
+- {"✅ Strong foundation in core technologies" if crit_ratio >= 60 else "⚠️ Gaps in essential skills"}
+
+"""
         
-        # Performance narrative
+        if imp['matches'] > 0:
+            imp_ratio = (imp['matches'] / imp['total']) * 100 if imp['total'] > 0 else 0
+            explanation += f"""**⭐ Important Skills** ({imp['score']}/15 points)
+- Matches: {imp['matches']}/{imp['total']} ({imp_ratio:.0f}%)
+
+"""
+        
+        # Role Compatibility
+        if role_status == "role_mismatch_penalty":
+            explanation += f"""**⚠️ Role Mismatch Detected**
+- Current Role: {employee.job_title}
+- Score reduced by 50% due to role-project incompatibility
+- This position requires development expertise
+
+"""
+        elif role_status == "role_match":
+            explanation += f"""**✅ Excellent Role Fit**
+- Current Role: {employee.job_title}
+- Role aligns perfectly with project requirements
+
+"""
+        
+        # Performance
         if employee.performance_score >= 85:
-            explanation += f"\n\n**Outstanding Track Record:**\n{employee.full_name} consistently delivers exceptional results, with a performance score of {employee.performance_score}/100. "
-            
-            if metric:
-                if metric.task_completion_score >= 85:
-                    explanation += f"They've successfully completed {metric.tasks_completed} out of {metric.tasks_assigned} tasks, demonstrating reliability and strong execution capabilities. "
-                
-                if metric.quality_score >= 85:
-                    explanation += f"Their work quality is exemplary, with minimal rework required and high peer review ratings. "
-                
-                if metric.collaboration_score >= 85:
-                    explanation += f"Team members consistently praise their collaborative approach and communication skills, making them an asset to any project team."
-        
+            explanation += f"""**📊 Performance** ({perf_score:.1f}/20 points)
+- Rating: {employee.performance_score}/100 - Outstanding performer
+- Consistently delivers high-quality results
+
+"""
         elif employee.performance_score >= 70:
-            explanation += f"\n\n**Solid Performance:**\n{employee.full_name} maintains good performance standards with a score of {employee.performance_score}/100. "
-            
-            if metric:
-                if metric.task_completion_score >= 75:
-                    explanation += f"They've completed {metric.tasks_completed} tasks with {metric.on_time_completion}% on-time delivery, showing dependability. "
-                
-                if metric.attendance_score >= 85:
-                    explanation += f"Their attendance record is strong ({metric.days_present}/{metric.days_total} days), indicating commitment and reliability."
+            explanation += f"""**📊 Performance** ({perf_score:.1f}/20 points)
+- Rating: {employee.performance_score}/100 - Solid contributor
+
+"""
         
-        # Work capacity
+        # Experience
+        if employee.total_exp and employee.total_exp >= 3:
+            explanation += f"""**💼 Experience** ({exp_score:.1f}/10 points)
+- {employee.total_exp} years - Proven track record
+
+"""
+        
+        # Availability
         if project_count == 0:
-            explanation += f"\n\n**Availability:**\nCurrently not assigned to any projects, {employee.full_name} can dedicate full attention to {project.name}, ensuring focused contribution and rapid ramp-up."
+            explanation += f"""**⏰ Availability** ({avail_score:.0f}/10 points)
+- Currently available - Can start immediately
+- No competing project commitments
+
+"""
         elif project_count <= 2:
-            explanation += f"\n\n**Availability:**\nWith {project_count} active project{'s' if project_count > 1 else ''}, {employee.full_name} has proven they can manage multiple responsibilities effectively while maintaining quality output. They have capacity to take on this project."
+            explanation += f"""**⏰ Availability** ({avail_score:.0f}/10 points)
+- {project_count} active project{"s" if project_count > 1 else ""}
+- Has capacity for additional work
+
+"""
         else:
-            explanation += f"\n\n**Current Workload:**\n{employee.full_name} is currently engaged in {project_count} projects, demonstrating their value and reliability. However, availability for this project may be limited and should be discussed to ensure they can deliver their best work."
+            explanation += f"""**⏰ Availability** ({avail_score:.0f}/10 points)
+- Currently on {project_count} projects
+- ⚠️ May have limited bandwidth
+
+"""
         
-        # Department fit
-        if employee.department and project.name:
-            explanation += f"\n\n**Team Fit:**\nAs a {employee.job_title or 'team member'} in the {employee.department} department, {employee.full_name} understands the organizational context and can collaborate seamlessly with cross-functional teams."
+        # Final Recommendation
+        explanation += "\n## 📋 Recommendation\n\n"
         
-        # Final recommendation
-        if final_score >= 80:
-            explanation += f"\n\n**Recommendation:**\n{employee.full_name} is highly recommended for {project.name}. Their combination of technical expertise, proven performance, and professional experience makes them an ideal candidate who can deliver immediate value and drive project success."
+        if final_score >= 75:
+            explanation += f"**✅ HIGHLY RECOMMENDED** - {employee.full_name} is an excellent match for this project with strong technical skills and proven performance."
         elif final_score >= 60:
-            explanation += f"\n\n**Recommendation:**\n{employee.full_name} is a strong candidate for {project.name}. They possess the necessary skills and experience to contribute effectively to the project goals."
+            explanation += f"**👍 RECOMMENDED** - {employee.full_name} is a good fit with solid capabilities for this project."
+        elif final_score >= 50:
+            explanation += f"**🤔 CONSIDER** - {employee.full_name} could work on this project but may need support or training in key areas."
         else:
-            explanation += f"\n\n**Recommendation:**\nWhile {employee.full_name} has relevant capabilities, consider reviewing other candidates to ensure the best fit for {project.name}'s specific requirements."
+            explanation += f"**❌ NOT RECOMMENDED** - {employee.full_name} lacks critical skills for this project. Consider other candidates or provide extensive training."
         
         return jsonify({
             "success": True,
             "explanation": explanation,
             "employee_name": employee.full_name,
             "project_name": project.name,
-            "match_score": final_score
+            "match_score": final_score,
+            "breakdown": {
+                "critical_skills": round(skill_breakdown['critical']['score'], 1),
+                "important_skills": round(skill_breakdown['important']['score'], 1),
+                "bonus_skills": round(skill_breakdown['bonus']['score'], 1),
+                "performance": round(perf_score, 1),
+                "experience": round(exp_score, 1),
+                "availability": round(avail_score, 1)
+            },
+            "role_status": role_status
         }), 200
         
     except Exception as e:
@@ -2666,76 +2925,6 @@ def explain_match_deterministic():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/smart-matching/assign", methods=["POST"])
-def assign_employee_to_project_fixed():
-    """Assign matched employee to project - FIXED VERSION"""
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
-    try:
-        data = request.get_json()
-        project_code = data.get("project_code")
-        employee_id = data.get("employee_id")
-        
-        if not project_code or not employee_id:
-            return jsonify({
-                "success": False, 
-                "error": "Project code and employee ID required"
-            }), 400
-        
-        # Get project
-        project = Project.query.filter_by(project_code=project_code).first()
-        if not project:
-            return jsonify({"success": False, "error": "Project not found"}), 404
-        
-        # Get employee
-        employee = Employee.query.filter_by(employee_id=employee_id).first()
-        if not employee:
-            return jsonify({"success": False, "error": "Employee not found"}), 404
-        
-        # Check if already assigned
-        existing = ProjectMember.query.filter_by(
-            project_id=project.id,
-            employee_id=employee_id
-        ).first()
-        
-        if existing:
-            return jsonify({
-                "success": False, 
-                "error": f"{employee.full_name} is already assigned to this project"
-            }), 400
-        
-        # Create assignment
-        member = ProjectMember(
-            project_id=project.id,
-            employee_id=employee_id,
-            role="Team Member"  # Default role
-        )
-        
-        db.session.add(member)
-        db.session.commit()
-        
-        print(f"✅ Assigned {employee.full_name} to {project.name}")
-        
-        return jsonify({
-            "success": True,
-            "message": f"Successfully assigned {employee.full_name} to {project.name}",
-            "employee_name": employee.full_name,
-            "project_name": project.name
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error assigning employee: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "success": False, 
-            "error": f"Failed to assign: {str(e)}"
-        }), 500
-        
 # ======================================================
 # LEARNING PATH ROUTES
 # ======================================================
@@ -3100,6 +3289,8 @@ def calculate_data_quality(employees):
     )
     
     return round((avg_completeness + consistency_score) / 2, 1)
+
+
 
 # ======================================================
 # DB INIT

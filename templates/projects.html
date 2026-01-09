@@ -537,8 +537,9 @@
                             {% for emp in project.available_employees %}
                             <div class="employee-checkbox">
                                 <input type="checkbox" name="employee_ids" value="{{ emp.employee_id }}" id="emp-{{ project.id }}-{{ emp.employee_id }}">
+                                <input type="hidden" name="employee_role_{{ emp.employee_id }}" value="{{ emp.job_title or 'Developer' }}">
                                 <label for="emp-{{ project.id }}-{{ emp.employee_id }}">
-                                    {{ emp.full_name }} <span style="color: #a0aec0;">({{ emp.employee_id }})</span>
+                                    {{ emp.full_name }} <span style="color: #a0aec0;">({{ emp.employee_id }}) - {{ emp.job_title or 'Developer' }}</span>
                                 </label>
                             </div>
                             {% endfor %}
