@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Learning Path - {{ employee.full_name }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -71,6 +75,13 @@
         }
         .btn:hover {
             transform: translateY(-2px);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+        .header-actions {
+            display: flex;
+            gap: 10px;
         }
         .card {
             background: white;
@@ -187,9 +198,14 @@
                     <p><i class="fas fa-briefcase"></i> {{ employee.job_title or 'N/A' }} • {{ employee.department or 'N/A' }}</p>
                 </div>
             </div>
-            <a href="/learning-paths" class="btn">
-                <i class="fas fa-arrow-left"></i> Back
-            </a>
+            <div class="header-actions">
+                <button id="downloadBtn" class="btn btn-success" style="display: none;" onclick="downloadPDF()">
+                    <i class="fas fa-download"></i> Download PDF
+                </button>
+                <a href="/learning-paths" class="btn">
+                    <i class="fas fa-arrow-left"></i> Back
+                </a>
+            </div>
         </div>
 
         <div id="loadingState" class="card loading">
@@ -225,6 +241,11 @@
 
     <script>
         const employeeId = "{{ employee.employee_id }}";
+        const employeeName = "{{ employee.full_name }}";
+        const employeeTitle = "{{ employee.job_title or 'N/A' }}";
+        const employeeDept = "{{ employee.department or 'N/A' }}";
+        
+        let learningPathData = null;
 
         async function loadLearningPath() {
             try {
@@ -239,10 +260,12 @@
                         document.getElementById('loadingState').innerHTML = `
                             <i class="fas fa-check-circle" style="font-size: 3em; color: #48bb78;"></i>
                             <h2 style="margin-top: 15px;">No Skill Gaps!</h2>
-                            <p>{{ employee.full_name }} has all required skills for current projects.</p>
+                            <p>${employeeName} has all required skills for current projects.</p>
                         `;
                         return;
                     }
+
+                    learningPathData = data;
 
                     renderProjects(data.projects);
                     renderSkills(data.current_skills, data.skill_gaps);
@@ -250,6 +273,7 @@
 
                     document.getElementById('loadingState').style.display = 'none';
                     document.getElementById('contentArea').style.display = 'block';
+                    document.getElementById('downloadBtn').style.display = 'inline-block';
                 } else {
                     alert('Error: ' + data.error);
                 }
@@ -295,7 +319,6 @@
         function renderLearningPath(pathText) {
             const container = document.getElementById('learningPath');
             
-            // Parse the learning path intelligently
             let html = '';
             const lines = pathText.split('\n');
             let inList = false;
@@ -311,7 +334,6 @@
                     continue;
                 }
                 
-                // Main section headers (all caps or starting with number)
                 if (/^[0-9]+\.\s+[A-Z\s]+$/.test(line) || /^[A-Z\s]{10,}$/.test(line)) {
                     if (inList) {
                         html += '</ul>';
@@ -319,7 +341,6 @@
                     }
                     html += `<h3>${line}</h3>`;
                 }
-                // Subsection headers (Title Case with colons or all caps medium length)
                 else if (line.match(/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*:/) || 
                          (line.match(/^[A-Z\s]{5,25}$/) && !line.includes('('))) {
                     if (inList) {
@@ -328,28 +349,23 @@
                     }
                     html += `<h4>${line}</h4>`;
                 }
-                // List items
                 else if (line.startsWith('-') || line.startsWith('•') || line.match(/^\d+\./)) {
                     if (!inList) {
                         html += '<ul>';
                         inList = true;
                     }
-                    // Remove the bullet/number
                     const cleanLine = line.replace(/^[-•]\s*|\d+\.\s*/, '');
                     html += `<li>${cleanLine}</li>`;
                 }
-                // Regular paragraphs
                 else {
                     if (inList) {
                         html += '</ul>';
                         inList = false;
                     }
                     
-                    // Check if it's a timeline/week item
                     if (line.match(/^Week\s+\d+/i) || line.match(/^Day\s+\d+/i)) {
                         html += `<div class="timeline-item">${line}</div>`;
                     }
-                    // Check if it contains resource mentions
                     else if (line.match(/course|tutorial|documentation|book|video|website/i)) {
                         html += `<div class="resource-box">${line}</div>`;
                     }
@@ -364,6 +380,181 @@
             }
             
             container.innerHTML = html;
+        }
+
+        function downloadPDF() {
+            if (!learningPathData) {
+                alert('No learning path data available');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            let yPos = 20;
+            const pageHeight = doc.internal.pageSize.height;
+            const margin = 20;
+            const maxWidth = 170;
+
+            // Helper function to add new page if needed
+            function checkPageBreak(requiredSpace) {
+                if (yPos + requiredSpace > pageHeight - margin) {
+                    doc.addPage();
+                    yPos = 20;
+                    return true;
+                }
+                return false;
+            }
+
+            // Title
+            doc.setFontSize(20);
+            doc.setFont(undefined, 'bold');
+            doc.text('Learning Path Report', margin, yPos);
+            yPos += 10;
+
+            // Employee Info
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Employee: ${employeeName}`, margin, yPos);
+            yPos += 7;
+            doc.text(`ID: ${employeeId}`, margin, yPos);
+            yPos += 7;
+            doc.text(`Title: ${employeeTitle} | Department: ${employeeDept}`, margin, yPos);
+            yPos += 15;
+
+            // Projects Section
+            checkPageBreak(30);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Active Projects:', margin, yPos);
+            yPos += 8;
+
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            learningPathData.projects.forEach(proj => {
+                checkPageBreak(15);
+                doc.text(`• ${proj.project_name}`, margin + 5, yPos);
+                yPos += 6;
+                if (proj.description) {
+                    const descLines = doc.splitTextToSize(proj.description, maxWidth - 10);
+                    descLines.forEach(line => {
+                        checkPageBreak(6);
+                        doc.text(line, margin + 10, yPos);
+                        yPos += 5;
+                    });
+                }
+                yPos += 3;
+            });
+            yPos += 10;
+
+            // Skills Section
+            checkPageBreak(30);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Skills Overview:', margin, yPos);
+            yPos += 8;
+
+            // Current Skills
+            doc.setFontSize(11);
+            doc.text('Current Skills:', margin, yPos);
+            yPos += 6;
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            const currentSkillsText = learningPathData.current_skills.join(', ') || 'None';
+            const currentSkillsLines = doc.splitTextToSize(currentSkillsText, maxWidth - 5);
+            currentSkillsLines.forEach(line => {
+                checkPageBreak(6);
+                doc.text(line, margin + 5, yPos);
+                yPos += 5;
+            });
+            yPos += 8;
+
+            // Skill Gaps
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text('Skills to Learn:', margin, yPos);
+            yPos += 6;
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            const skillGapsText = learningPathData.skill_gaps.join(', ');
+            const skillGapsLines = doc.splitTextToSize(skillGapsText, maxWidth - 5);
+            skillGapsLines.forEach(line => {
+                checkPageBreak(6);
+                doc.text(line, margin + 5, yPos);
+                yPos += 5;
+            });
+            yPos += 15;
+
+            // Learning Path Content
+            checkPageBreak(30);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Personalized Learning Path:', margin, yPos);
+            yPos += 10;
+
+            // Parse learning path text
+            const lines = learningPathData.learning_path.split('\n');
+            
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) {
+                    yPos += 4;
+                    continue;
+                }
+
+                checkPageBreak(15);
+
+                // Main headings
+                if (/^[0-9]+\.\s+[A-Z\s]+$/.test(line) || /^[A-Z\s]{10,}$/.test(line)) {
+                    yPos += 5;
+                    doc.setFontSize(12);
+                    doc.setFont(undefined, 'bold');
+                    const headingLines = doc.splitTextToSize(line, maxWidth);
+                    headingLines.forEach(hl => {
+                        checkPageBreak(8);
+                        doc.text(hl, margin, yPos);
+                        yPos += 7;
+                    });
+                }
+                // Subheadings
+                else if (line.match(/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*:/)) {
+                    doc.setFontSize(11);
+                    doc.setFont(undefined, 'bold');
+                    const subLines = doc.splitTextToSize(line, maxWidth);
+                    subLines.forEach(sl => {
+                        checkPageBreak(7);
+                        doc.text(sl, margin, yPos);
+                        yPos += 6;
+                    });
+                }
+                // List items
+                else if (line.startsWith('-') || line.startsWith('•') || line.match(/^\d+\./)) {
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+                    const cleanLine = line.replace(/^[-•]\s*|\d+\.\s*/, '');
+                    const itemLines = doc.splitTextToSize('• ' + cleanLine, maxWidth - 5);
+                    itemLines.forEach(il => {
+                        checkPageBreak(6);
+                        doc.text(il, margin + 5, yPos);
+                        yPos += 5;
+                    });
+                }
+                // Regular text
+                else {
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+                    const textLines = doc.splitTextToSize(line, maxWidth);
+                    textLines.forEach(tl => {
+                        checkPageBreak(6);
+                        doc.text(tl, margin, yPos);
+                        yPos += 5;
+                    });
+                }
+            }
+
+            // Save PDF
+            const filename = `LearningPath_${employeeId}_${employeeName.replace(/\s+/g, '_')}.pdf`;
+            doc.save(filename);
         }
 
         window.addEventListener('DOMContentLoaded', loadLearningPath);
