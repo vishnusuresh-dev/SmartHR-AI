@@ -91,27 +91,48 @@
 
         // Real-time phone validation
         async function validatePhone(phone) {
-            if (!phone) return;
-            
+            const phoneInput = document.querySelector('input[name="phone"]');
+            const feedbackDiv = document.getElementById('phone-feedback');
+
+            // ✅ Pattern check first (6–9 + 9 digits)
+            const phonePattern = /^[6-9][0-9]{9}$/;
+            if (!phonePattern.test(phone)) {
+                phoneInput.classList.add('is-invalid');
+                phoneInput.classList.remove('is-valid');
+                feedbackDiv.innerHTML = `
+                    <div class="text-danger validation-message">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Wrong phone number pattern
+                    </div>`;
+                return false;
+            }
+
+            // ✅ If pattern correct → then check API
             const response = await fetch('/api/validate-phone', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({phone: phone})
+                body: JSON.stringify({ phone: phone })
             });
-            
+
             const data = await response.json();
-            const phoneInput = document.querySelector('input[name="phone"]');
-            const feedbackDiv = document.getElementById('phone-feedback');
-            
+
             if (data.exists) {
                 phoneInput.classList.add('is-invalid');
                 phoneInput.classList.remove('is-valid');
-                feedbackDiv.innerHTML = `<div class="text-danger validation-message"><i class="fas fa-exclamation-circle"></i> ${data.message}</div>`;
+                feedbackDiv.innerHTML = `
+                    <div class="text-danger validation-message">
+                        <i class="fas fa-exclamation-circle"></i>
+                        ${data.message}
+                    </div>`;
                 return false;
             } else {
                 phoneInput.classList.add('is-valid');
                 phoneInput.classList.remove('is-invalid');
-                feedbackDiv.innerHTML = `<div class="text-success validation-message"><i class="fas fa-check-circle"></i> Phone available</div>`;
+                feedbackDiv.innerHTML = `
+                    <div class="text-success validation-message">
+                        <i class="fas fa-check-circle"></i>
+                        Phone number is valid
+                    </div>`;
                 return true;
             }
         }
@@ -208,10 +229,10 @@
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Email Address *</label>
                     <input type="email" 
-                           name="email" 
-                           class="form-control input-style" 
-                           onkeyup="debounceEmail(this.value)"
-                           required>
+                            name="email" 
+                            class="form-control input-style" 
+                            onkeyup="debounceEmail(this.value)"
+                            required>
                     <div id="email-feedback"></div>
                 </div>
 
@@ -230,6 +251,8 @@
                     <input type="text" 
                            name="phone" 
                            class="form-control input-style"
+                           maxlength="10"
+                            pattern="[6-9]{1}[0-9]{9}"
                            onkeyup="debouncePhone(this.value)"
                            required>
                     <div id="phone-feedback"></div>
