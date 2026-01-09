@@ -834,13 +834,8 @@
     background: rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(10px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-<<<<<<< HEAD
-    margin-top: -20px;
-    padding: 20px;
-=======
     margin-top: -22px;
     padding: 20px 0;
->>>>>>> bd2fd5c0f04acffd32dfc59d30aba5c113c7d706
 }
 
 .footer-content {
