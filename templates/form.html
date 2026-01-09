@@ -64,27 +64,56 @@
 
         // Real-time email validation
         async function validateEmail(email) {
-            if (!email) return;
-            
+
+            const emailInput = document.querySelector('input[name="email"]');
+            const feedbackDiv = document.getElementById('email-feedback');
+
+            if (!email) {
+                feedbackDiv.innerHTML = "";
+                emailInput.classList.remove('is-invalid', 'is-valid');
+                return false;
+            }
+
+            // ✅ EMAIL PATTERN CHECK (ADD HERE)
+            const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+            if (!emailPattern.test(email)) {
+                emailInput.classList.add('is-invalid');
+                emailInput.classList.remove('is-valid');
+                feedbackDiv.innerHTML = `
+                    <div class="text-danger validation-message">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Wrong email pattern
+                    </div>`;
+                return false;
+            }
+
+            // ✅ Pattern correct → API call
             const response = await fetch('/api/validate-email', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({email: email})
+                body: JSON.stringify({ email: email })
             });
-            
+
             const data = await response.json();
-            const emailInput = document.querySelector('input[name="email"]');
-            const feedbackDiv = document.getElementById('email-feedback');
-            
+
             if (data.exists) {
                 emailInput.classList.add('is-invalid');
                 emailInput.classList.remove('is-valid');
-                feedbackDiv.innerHTML = `<div class="text-danger validation-message"><i class="fas fa-exclamation-circle"></i> ${data.message}</div>`;
+                feedbackDiv.innerHTML = `
+                    <div class="text-danger validation-message">
+                        <i class="fas fa-exclamation-circle"></i>
+                        ${data.message}
+                    </div>`;
                 return false;
             } else {
                 emailInput.classList.add('is-valid');
                 emailInput.classList.remove('is-invalid');
-                feedbackDiv.innerHTML = `<div class="text-success validation-message"><i class="fas fa-check-circle"></i> Email available</div>`;
+                feedbackDiv.innerHTML = `
+                    <div class="text-success validation-message">
+                        <i class="fas fa-check-circle"></i>
+                        Email is valid
+                    </div>`;
                 return true;
             }
         }
